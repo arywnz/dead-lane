@@ -15,7 +15,7 @@ py -3.14 -m venv .venv
 
 ## Executar o protótipo
 
-Na raiz, execute `.\.venv\Scripts\python.exe main.py`.
+Na raiz, execute `.\.venv\Scripts\python.exe jogo.py`.
 
 - **W / ↑** acelera.
 - **S / ↓** freia até parar.
@@ -24,3 +24,5 @@ Na raiz, execute `.\.venv\Scripts\python.exe main.py`.
 - **Esc** encerra a janela.
 
 O carro estacionado à direita avisa um segundo antes de abrir a porta. Teste o aviso aproximando-se pela faixa central. A validação da colisão fica pendente.
+
+O percurso tem três trechos de 750 m. Os checkpoints de 750 m e 1.500 m deixam o ciclista avançar e bloqueiam novos avisos de perigo por 2 segundos. Aos 2.250 m, o jogo mostra a vitória. Pressione **R** para voltar ao início.
