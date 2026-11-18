@@ -3,6 +3,8 @@ import pygame
 from src.config import (
     MAX_FRAME_SECONDS,
     MAX_SPEED_MPS,
+    RIDER_HITBOX_HEIGHT,
+    RIDER_HITBOX_WIDTH,
     RIDER_SCREEN_Y,
     ROAD_CENTER_X,
     ROAD_LANES,
@@ -12,6 +14,7 @@ from src.config import (
     WINDOW_HEIGHT,
     WINDOW_WIDTH,
 )
+from src.enemies import DoorHazard, DoorPhase
 from src.player import Player
 
 BACKGROUND = "#121d1b"
@@ -23,6 +26,8 @@ FOREGROUND = "#edf1e6"
 MUTED = "#aebdb4"
 ACCENT = "#d8f975"
 PANEL = "#1b2824"
+WARNING = "#ffcf70"
+DANGER = "#ff786f"
 
 
 def draw_road(screen: pygame.Surface, distance_m: float) -> None:
@@ -49,7 +54,34 @@ def draw_rider(screen: pygame.Surface, player: Player, braking: bool) -> None:
     pygame.draw.rect(screen, ACCENT, (x - 9, y - 8, 18, 25), border_radius=7)
     pygame.draw.circle(screen, FOREGROUND, (x, y - 9), 7)
     if braking and player.speed_mps > 0:
-        pygame.draw.circle(screen, "#ff786f", (x, y + 22), 4)
+        pygame.draw.circle(screen, DANGER, (x, y + 22), 4)
+
+
+def draw_door_hazard(
+    screen: pygame.Surface,
+    hazard: DoorHazard,
+    rider_distance_m: float,
+    font: pygame.font.Font,
+) -> None:
+    car = hazard.car_bounds(rider_distance_m)
+    car_rect = pygame.Rect(round(car.x), round(car.y), round(car.w), round(car.h))
+    if not screen.get_rect().colliderect(car_rect):
+        return
+
+    pygame.draw.rect(screen, "#4c6268", car_rect, border_radius=10)
+    pygame.draw.rect(screen, BACKGROUND, car_rect.inflate(-14, -35), border_radius=6)
+    pygame.draw.line(screen, SHOULDER, car_rect.midtop, car_rect.midbottom, 2)
+
+    phase = hazard.phase
+    if phase is DoorPhase.WARNING:
+        pygame.draw.rect(screen, WARNING, car_rect, width=3, border_radius=10)
+        label = font.render("! Porta", True, WARNING)
+        screen.blit(label, (car_rect.right - label.get_width(), car_rect.top - label.get_height() - 6))
+    elif phase is DoorPhase.OPEN:
+        door = hazard.door_bounds(rider_distance_m)
+        door_rect = pygame.Rect(round(door.x), round(door.y), round(door.w), round(door.h))
+        pygame.draw.rect(screen, DANGER, door_rect, border_radius=4)
+        pygame.draw.line(screen, BACKGROUND, door_rect.midleft, door_rect.midright, 2)
 
 
 def draw_panel(
@@ -58,8 +90,10 @@ def draw_panel(
     title: pygame.font.Font,
     body: pygame.font.Font,
     speed_font: pygame.font.Font,
+    door_phase: DoorPhase,
+    collided: bool,
 ) -> None:
-    panel = pygame.Rect(748, 115, 448, 490)
+    panel = pygame.Rect(748, 115, 448, 540)
     pygame.draw.rect(screen, PANEL, panel, border_radius=22)
     x = panel.x + 34
     screen.blit(title.render("Dead Lane", True, FOREGROUND), (x, 147))
@@ -80,6 +114,7 @@ def draw_panel(
             ("Acelerar", "W / ↑"),
             ("Frear", "S / ↓"),
             ("Mover para os lados", "A D / ← →"),
+            ("Reiniciar", "R"),
             ("Sair", "Esc"),
         )
     ):
@@ -87,6 +122,16 @@ def draw_panel(
         screen.blit(body.render(action, True, FOREGROUND), (x, y))
         key_label = body.render(keys, True, MUTED)
         screen.blit(key_label, (x + 380 - key_label.get_width(), y))
+
+    if collided:
+        message, color = "Colisão com a porta. R para reiniciar.", DANGER
+    elif door_phase is DoorPhase.WARNING:
+        message, color = "Aviso de porta. Freie ou mude de faixa.", WARNING
+    elif door_phase is DoorPhase.OPEN:
+        message, color = "Porta aberta na faixa direita.", DANGER
+    else:
+        return
+    screen.blit(body.render(message, True, color), (x, 617))
 
 
 def run() -> None:
@@ -97,6 +142,10 @@ def run() -> None:
         pygame.display.set_caption("Dead Lane")
         clock = pygame.time.Clock()
         player = Player()
+        hazard = DoorHazard()
+        collided = False
+        rider_bounds = pygame.FRect(0, 0, RIDER_HITBOX_WIDTH, RIDER_HITBOX_HEIGHT)
+        rider_bounds.centery = RIDER_SCREEN_Y
         title = pygame.font.SysFont("Segoe UI", 44, bold=True)
         body = pygame.font.SysFont("Segoe UI", 21)
         speed_font = pygame.font.SysFont("Segoe UI", 68, bold=True)
@@ -106,20 +155,32 @@ def run() -> None:
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     return
-                if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-                    return
+                if event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_ESCAPE:
+                        return
+                    if event.key == pygame.K_r:
+                        player = Player()
+                        hazard = DoorHazard()
+                        collided = False
 
-            keys = pygame.key.get_pressed()
-            left = keys[pygame.K_a] or keys[pygame.K_LEFT]
-            right = keys[pygame.K_d] or keys[pygame.K_RIGHT]
-            accelerate = keys[pygame.K_w] or keys[pygame.K_UP]
-            brake = keys[pygame.K_s] or keys[pygame.K_DOWN]
-            player.update(dt, int(right) - int(left), accelerate, brake)
+            brake = False
+            if not collided:
+                keys = pygame.key.get_pressed()
+                left = keys[pygame.K_a] or keys[pygame.K_LEFT]
+                right = keys[pygame.K_d] or keys[pygame.K_RIGHT]
+                accelerate = keys[pygame.K_w] or keys[pygame.K_UP]
+                brake = keys[pygame.K_s] or keys[pygame.K_DOWN]
+                player.update(dt, int(right) - int(left), accelerate, brake)
+                hazard.update(dt, player.distance_m)
+                rider_bounds.centerx = player.x
+                if hazard.phase is DoorPhase.OPEN:
+                    collided = rider_bounds.colliderect(hazard.door_bounds(player.distance_m))
 
             screen.fill(BACKGROUND)
             draw_road(screen, player.distance_m)
+            draw_door_hazard(screen, hazard, player.distance_m, body)
             draw_rider(screen, player, brake)
-            draw_panel(screen, player, title, body, speed_font)
+            draw_panel(screen, player, title, body, speed_font, hazard.phase, collided)
             pygame.display.flip()
     finally:
         pygame.quit()

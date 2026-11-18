@@ -20,4 +20,7 @@ Na raiz, execute `.\.venv\Scripts\python.exe main.py`.
 - **W / ↑** acelera.
 - **S / ↓** freia até parar.
 - **A / ←** e **D / →** movem o ciclista para os lados enquanto ele avança.
+- **R** reinicia o percurso.
 - **Esc** encerra a janela.
+
+O carro estacionado à direita avisa um segundo antes de abrir a porta. Teste o aviso aproximando-se pela faixa central. A validação da colisão fica pendente.
