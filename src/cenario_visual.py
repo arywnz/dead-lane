@@ -17,7 +17,7 @@ from src.configuracao import (
     VELOCIDADE_MAXIMA_MPS,
 )
 from src.percurso import Percurso
-from src.perigos import FasePorta, PerigoPorta
+from src.perigos import FasePontoCego, FasePorta, PerigoPontoCego, PerigoPorta
 from src.trafego import TipoVeiculo, Veiculo
 
 FUNDO = "#121d1b"
@@ -284,6 +284,82 @@ def desenhar_perigo_porta(
         retangulo_porta = pygame.Rect(round(porta.x), round(porta.y), round(porta.w), round(porta.h))
         pygame.draw.rect(tela, PERIGO, retangulo_porta, border_radius=4)
         pygame.draw.line(tela, FUNDO, retangulo_porta.midleft, retangulo_porta.midright, 2)
+
+
+def desenhar_perigo_ponto_cego(
+    tela: pygame.Surface,
+    perigo: PerigoPontoCego,
+    distancia_ciclista_m: float,
+    indice_trecho: int,
+    tempo_s: float,
+    fonte: pygame.font.Font,
+    ciclista_em_risco: bool,
+) -> None:
+    if perigo.onibus is None:
+        return
+
+    fase = perigo.fase
+    if fase in (FasePontoCego.AVISO, FasePontoCego.ATIVO):
+        zona = perigo.area_ponto_cego(distancia_ciclista_m)
+        if zona is not None:
+            rect = pygame.Rect(round(zona.x), round(zona.y), round(zona.w), round(zona.h))
+            if tela.get_rect().colliderect(rect):
+                eh_ativo = fase is FasePontoCego.ATIVO
+                cor_hex = PERIGO if eh_ativo else AVISO
+                cor_rgb = pygame.Color(cor_hex)
+                pulso = 0.5 + 0.5 * math.sin(tempo_s * (11.0 if eh_ativo else 6.5))
+
+                superficie = pygame.Surface((rect.width, rect.height), pygame.SRCALPHA)
+                alfa_fundo = int((68 if eh_ativo else 42) + 22 * pulso)
+                pygame.draw.rect(
+                    superficie,
+                    (cor_rgb.r, cor_rgb.g, cor_rgb.b, alfa_fundo),
+                    (0, 0, rect.width, rect.height),
+                    border_radius=10,
+                )
+
+                # Hachura diagonal para leitura acessível (inspirada em sinalização Angles Morts)
+                alfa_listra = 95 if eh_ativo else 60
+                passo = 22
+                desloc = int(tempo_s * 36) % passo
+                for offset in range(-rect.height, rect.width + rect.height, passo):
+                    x1 = offset + desloc
+                    pygame.draw.line(
+                        superficie,
+                        (cor_rgb.r, cor_rgb.g, cor_rgb.b, alfa_listra),
+                        (x1, 0),
+                        (x1 - rect.height * 0.45, rect.height),
+                        4,
+                    )
+
+                tela.blit(superficie, rect.topleft)
+                espessura = 3 if (eh_ativo or ciclista_em_risco) else 2
+                pygame.draw.rect(tela, cor_hex, rect, width=espessura, border_radius=10)
+
+                # Seta discreta indicando saída por frenagem ou recuo
+                cx = rect.centerx
+                cy = rect.bottom - 22
+                pygame.draw.lines(
+                    tela,
+                    cor_hex,
+                    False,
+                    [(cx - 10, cy - 6), (cx, cy + 4), (cx + 10, cy - 6)],
+                    3,
+                )
+
+                rotulo_texto = "! ZONA CRÍTICA" if eh_ativo else "! PONTO CEGO"
+                rotulo = fonte.render(rotulo_texto, True, cor_hex)
+                badge = pygame.Rect(
+                    min(rect.x + 8, CENTRO_PISTA_X + LARGURA_PISTA // 2 - rotulo.get_width() - 16),
+                    rect.y + 10,
+                    rotulo.get_width() + 14,
+                    rotulo.get_height() + 6,
+                )
+                pygame.draw.rect(tela, FUNDO, badge, border_radius=6)
+                pygame.draw.rect(tela, cor_hex, badge, width=1, border_radius=6)
+                tela.blit(rotulo, (badge.x + 7, badge.y + 3))
+
+    desenhar_veiculo(tela, perigo.onibus, distancia_ciclista_m, indice_trecho, tempo_s)
 
 
 def desenhar_veiculo(
