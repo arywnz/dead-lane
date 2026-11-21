@@ -25,15 +25,14 @@ from src.configuracao import (
     TEMPO_MAXIMO_QUADRO_S,
 )
 from src.percurso import Percurso
-from src.perigos import FasePontoCego, FasePorta, PerigoPontoCego, PerigoPorta
+from src.perigos import FasePontoCego, FasePorta, GerenciadorPerigos
 from src.trafego import GerenciadorTrafego
 
 
 def _obter_mensagem_status(
     motivo_colisao: str | None,
     percurso: Percurso,
-    perigo_porta: PerigoPorta,
-    perigo_ponto_cego: PerigoPontoCego,
+    perigos: GerenciadorPerigos,
     ciclista_no_ponto_cego: bool,
     feedback_seguro_s: float,
 ) -> tuple[str, str] | None:
@@ -41,16 +40,21 @@ def _obter_mensagem_status(
         return motivo_colisao, PERIGO
     if percurso.concluido:
         return "Vitória! Percurso concluído.", DESTAQUE
-    if perigo_ponto_cego.fase is FasePontoCego.ATIVO:
-        return "Ônibus fechando à direita! Afaste-se.", PERIGO
-    if perigo_ponto_cego.fase is FasePontoCego.AVISO:
+
+    ponto_cego = perigos.ponto_cego_em_destaque()
+    if ponto_cego is not None:
+        if ponto_cego.fase is FasePontoCego.ATIVO:
+            return "Ônibus fechando à direita! Afaste-se.", PERIGO
         if ciclista_no_ponto_cego:
             return "Você está no ponto cego! Freie para sair.", PERIGO
         return "Ponto cego do ônibus. Freie ou passe à esquerda.", AVISO
-    if perigo_porta.fase is FasePorta.AVISO:
+
+    porta = perigos.porta_em_destaque()
+    if porta is not None:
+        if porta.fase is FasePorta.ABERTA:
+            return "Porta aberta na faixa direita.", PERIGO
         return "Aviso de porta. Freie ou mude de faixa.", AVISO
-    if perigo_porta.fase is FasePorta.ABERTA:
-        return "Porta aberta na faixa direita.", PERIGO
+
     if feedback_seguro_s > 0.0:
         return "Saiu do ponto cego com segurança!", DESTAQUE
     if percurso.intervalo_restante_s > 0:
@@ -67,13 +71,11 @@ def executar() -> None:
         relogio = pygame.time.Clock()
         ciclista = Ciclista()
         percurso = Percurso()
-        perigo_porta = PerigoPorta()
-        perigo_ponto_cego = PerigoPontoCego()
+        perigos = GerenciadorPerigos.criar_padrao()
         trafego = GerenciadorTrafego()
         motivo_colisao: str | None = None
         tempo_total_s = 0.0
         feedback_seguro_s = 0.0
-        ultimo_feedback_ponto_cego = False
         area_ciclista = pygame.FRect(0, 0, LARGURA_COLISAO_CICLISTA, ALTURA_COLISAO_CICLISTA)
         area_ciclista.centery = CICLISTA_TELA_Y
         fonte_titulo = pygame.font.SysFont("Segoe UI", 42, bold=True)
@@ -93,12 +95,10 @@ def executar() -> None:
                     if evento.key == pygame.K_r:
                         ciclista = Ciclista()
                         percurso = Percurso()
-                        perigo_porta = PerigoPorta()
-                        perigo_ponto_cego = PerigoPontoCego()
+                        perigos = GerenciadorPerigos.criar_padrao()
                         trafego = GerenciadorTrafego()
                         motivo_colisao = None
                         feedback_seguro_s = 0.0
-                        ultimo_feedback_ponto_cego = False
 
             frear = False
             ciclista_no_ponto_cego = False
@@ -114,45 +114,38 @@ def executar() -> None:
                 area_ciclista.centerx = ciclista.x
 
                 percurso.atualizar(delta_s, ciclista.distancia_m)
-                perigo_porta.atualizar(delta_s, ciclista.distancia_m, permitir_aviso=percurso.pode_iniciar_perigo)
-                perigo_ponto_cego.atualizar(
+                perigos.atualizar(
                     delta_s,
                     ciclista.distancia_m,
                     area_ciclista,
                     permitir_aviso=percurso.pode_iniciar_perigo,
                 )
 
-                if perigo_ponto_cego.saiu_com_seguranca and not ultimo_feedback_ponto_cego:
+                if perigos.consumir_feedback_seguro() is not None:
                     feedback_seguro_s = 1.6
-                    ultimo_feedback_ponto_cego = True
                 else:
                     feedback_seguro_s = max(0.0, feedback_seguro_s - delta_s)
 
-                veiculos_externos = [perigo_ponto_cego.onibus] if perigo_ponto_cego.onibus is not None else ()
-                zonas_bloqueadas = (
-                    (perigo_porta.distancia_m - 12.0, perigo_porta.distancia_m + 12.0),
-                    (perigo_ponto_cego.distancia_encontro_m - 18.0, perigo_ponto_cego.distancia_encontro_m + 18.0),
-                )
+                onibus_perigo = perigos.onibus_ativos(ciclista.distancia_m)
+                zonas_bloqueadas = perigos.zonas_bloqueadas_faixa_direita(ciclista.distancia_m)
+                zonas_sem_trafego = perigos.zonas_exclusivas_ponto_cego(ciclista.distancia_m)
                 trafego.atualizar(
                     delta_s,
                     ciclista.distancia_m,
                     zonas_bloqueadas=zonas_bloqueadas,
-                    veiculos_externos=veiculos_externos,
+                    veiculos_externos=onibus_perigo,
+                    indice_trecho=percurso.indice_trecho,
+                    zonas_sem_trafego=zonas_sem_trafego,
                 )
 
-                ciclista_no_ponto_cego = perigo_ponto_cego.ciclista_na_zona(area_ciclista, ciclista.distancia_m)
+                ponto_cego_destaque = perigos.ponto_cego_em_destaque()
+                ciclista_no_ponto_cego = (
+                    ponto_cego_destaque is not None
+                    and ponto_cego_destaque.ciclista_na_zona(area_ciclista, ciclista.distancia_m)
+                )
 
-                if perigo_porta.fase is FasePorta.ABERTA and area_ciclista.colliderect(
-                    perigo_porta.area_porta(ciclista.distancia_m)
-                ):
-                    motivo_colisao = "Colisão com a porta. R para reiniciar."
-                elif perigo_ponto_cego.houve_incidente(area_ciclista, ciclista.distancia_m):
-                    motivo_colisao = "Ficou no ponto cego do ônibus. R para reiniciar."
-                elif perigo_ponto_cego.onibus is not None and area_ciclista.colliderect(
-                    perigo_ponto_cego.onibus.area_colisao(ciclista.distancia_m)
-                ):
-                    motivo_colisao = "Colisão com o ônibus. R para reiniciar."
-                else:
+                motivo_colisao = perigos.verificar_colisao(area_ciclista, ciclista.distancia_m)
+                if motivo_colisao is None:
                     for veiculo in trafego.veiculos:
                         if area_ciclista.colliderect(veiculo.area_colisao(ciclista.distancia_m)):
                             motivo_colisao = "Colisão com veículo na avenida. R para reiniciar."
@@ -161,24 +154,26 @@ def executar() -> None:
             tela.fill(FUNDO)
             desenhar_cenario_avenida(tela, ciclista.distancia_m, percurso.indice_trecho)
             desenhar_marcos_percurso(tela, ciclista.distancia_m, fonte_texto)
-            desenhar_perigo_porta(tela, perigo_porta, ciclista.distancia_m, fonte_texto)
+            for porta in perigos.portas:
+                desenhar_perigo_porta(tela, porta, ciclista.distancia_m, fonte_texto)
             for veiculo in trafego.veiculos:
                 desenhar_veiculo(tela, veiculo, ciclista.distancia_m, percurso.indice_trecho, tempo_total_s)
-            desenhar_perigo_ponto_cego(
-                tela,
-                perigo_ponto_cego,
-                ciclista.distancia_m,
-                percurso.indice_trecho,
-                tempo_total_s,
-                fonte_menor,
-                ciclista_no_ponto_cego,
-            )
+            for ponto_cego in perigos.pontos_cegos:
+                em_risco = ponto_cego.ciclista_na_zona(area_ciclista, ciclista.distancia_m)
+                desenhar_perigo_ponto_cego(
+                    tela,
+                    ponto_cego,
+                    ciclista.distancia_m,
+                    percurso.indice_trecho,
+                    tempo_total_s,
+                    fonte_menor,
+                    em_risco,
+                )
             desenhar_ciclista(tela, ciclista, frear)
             mensagem_status = _obter_mensagem_status(
                 motivo_colisao,
                 percurso,
-                perigo_porta,
-                perigo_ponto_cego,
+                perigos,
                 ciclista_no_ponto_cego,
                 feedback_seguro_s,
             )
@@ -191,6 +186,7 @@ def executar() -> None:
                 fonte_velocidade,
                 percurso,
                 mensagem_status,
+                perigos.marcos_normalizados(COMPRIMENTO_PERCURSO_M),
             )
             pygame.display.flip()
     finally:

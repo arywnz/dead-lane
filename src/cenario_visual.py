@@ -116,9 +116,17 @@ _HALO_POSTE_CACHE: pygame.Surface | None = None
 def _cone_farol() -> pygame.Surface:
     global _CONE_FAROL_CACHE
     if _CONE_FAROL_CACHE is None:
-        surf = pygame.Surface((68, 72), pygame.SRCALPHA)
-        pygame.draw.polygon(surf, (254, 249, 195, 58), [(24, 72), (44, 72), (66, 0), (2, 0)])
-        pygame.draw.polygon(surf, (254, 249, 195, 28), [(28, 72), (40, 72), (56, 0), (12, 0)])
+        surf = pygame.Surface((76, 86), pygame.SRCALPHA)
+        for camada, (y_topo, larg_topo, alfa) in enumerate(
+            ((28, 36, 46), (18, 48, 32), (8, 60, 18), (0, 72, 9))
+        ):
+            meia_topo = larg_topo // 2
+            cx = 38
+            pygame.draw.polygon(
+                surf,
+                (254, 249, 195, alfa),
+                [(cx - 6, 86), (cx + 6, 86), (cx + meia_topo, y_topo), (cx - meia_topo, y_topo)],
+            )
         _CONE_FAROL_CACHE = surf
     return _CONE_FAROL_CACHE
 
@@ -204,37 +212,37 @@ def desenhar_cenario_avenida(
         )
 
     # Quadras urbanas, árvores e postes à esquerda
-    passo_bloco_m = 28.0
+    passo_bloco_m = 13.5
     primeiro_indice = math.floor((distancia_m - 12.0) / passo_bloco_m)
     ultimo_indice = math.ceil((distancia_m + 24.0) / passo_bloco_m)
     for idx in range(primeiro_indice, ultimo_indice + 1):
         marco_m = idx * passo_bloco_m
         y_centro = round(_y_tela(distancia_m, marco_m))
-        largura_bloco = 132 if idx % 2 == 0 else 112
-        altura_bloco = 180 if idx % 3 != 0 else 220
-        bx = 22 if idx % 2 == 0 else 36
+        largura_bloco = 136 if idx % 2 == 0 else 108
+        altura_bloco = 175 if idx % 3 != 0 else 210
+        bx = 20 if idx % 2 == 0 else 42
         bloco_rect = pygame.Rect(bx, y_centro - altura_bloco // 2, largura_bloco, altura_bloco)
         pygame.draw.rect(tela, paleta.bloco_urbano, bloco_rect, border_radius=10)
         pygame.draw.rect(tela, paleta.telhado_urbano, bloco_rect.inflate(-24, -28), border_radius=6)
 
         # Árvore estilizada na calçada esquerda
         arvore_x = esquerda_pista - 18
-        arvore_y = y_centro - 54
-        pygame.draw.circle(tela, "#0f1716", (arvore_x + paleta.sombra_dx, arvore_y + paleta.sombra_dy), 14)
-        pygame.draw.circle(tela, paleta.copa_arvore, (arvore_x, arvore_y), 14)
-        pygame.draw.circle(tela, paleta.copa_luz, (arvore_x - 3, arvore_y - 3), 7)
+        arvore_y = y_centro - 48
+        pygame.draw.circle(tela, "#0f1716", (arvore_x + paleta.sombra_dx, arvore_y + paleta.sombra_dy), 13)
+        pygame.draw.circle(tela, paleta.copa_arvore, (arvore_x, arvore_y), 13)
+        pygame.draw.circle(tela, paleta.copa_luz, (arvore_x - 3, arvore_y - 3), 6)
 
         # Poste de iluminação periódico
         if idx % 2 == 0:
             poste_x = esquerda_pista - 10
-            poste_y = y_centro + 62
+            poste_y = y_centro + 56
             if paleta.farois_ativos:
                 tela.blit(_halo_poste(), (poste_x - 42, poste_y - 42))
             pygame.draw.circle(tela, "#8fa19b", (poste_x, poste_y), 4)
             pygame.draw.line(tela, "#8fa19b", (poste_x, poste_y), (poste_x + 12, poste_y), 2)
 
         # Abrigo de ponto de ônibus ocasional na calçada direita
-        if idx % 4 == 1:
+        if idx % 5 == 1:
             abrigo_rect = pygame.Rect(direita_pista + 65, y_centro - 28, 16, 56)
             pygame.draw.rect(tela, "#374b54", abrigo_rect, border_radius=4)
             pygame.draw.rect(tela, "#587b8a", abrigo_rect.inflate(-6, -12), border_radius=2)
@@ -482,6 +490,7 @@ def desenhar_painel(
     fonte_velocidade: pygame.font.Font,
     percurso: Percurso,
     mensagem_status: tuple[str, str] | None,
+    marcos_perigos: list[tuple[float, bool]] | None = None,
 ) -> None:
     painel = pygame.Rect(748, 72, 464, 576)
     pygame.draw.rect(tela, PAINEL, painel, border_radius=22)
@@ -524,6 +533,12 @@ def desenhar_painel(
         tick_x = x + round(largura_util * divisoria / len(NOMES_TRECHOS))
         pygame.draw.line(tela, PAINEL, (tick_x, barra_y - 1), (tick_x, barra_y + 9), 3)
 
+    if marcos_perigos:
+        for progresso, superado in marcos_perigos:
+            mx = x + round(largura_util * min(1.0, max(0.0, progresso)))
+            cor_marco = DESTAQUE if superado else AVISO
+            pygame.draw.circle(tela, cor_marco, (mx, barra_y + 15), 2)
+
     pygame.draw.line(tela, BORDA_PISTA, (x, 362), (x + largura_util, 362))
 
     for linha, (acao, teclas) in enumerate(
@@ -547,11 +562,11 @@ def desenhar_painel(
     card = pygame.Rect(x, 566, largura_util, 56)
     pygame.draw.rect(tela, FUNDO, card, border_radius=12)
     pygame.draw.rect(tela, cor, card, width=2, border_radius=12)
-    pygame.draw.rect(tela, cor, (card.x + 2, card.y + 10, 5, card.height - 20), border_radius=2)
+    pygame.draw.rect(tela, cor, (card.x + 8, card.y + 12, 4, card.height - 24), border_radius=2)
     texto_render = fonte_menor.render(mensagem, True, cor)
-    if texto_render.get_width() > largura_util - 28:
+    if texto_render.get_width() > largura_util - 32:
         texto_render = pygame.transform.smoothscale(
             texto_render,
-            (largura_util - 28, texto_render.get_height()),
+            (largura_util - 32, texto_render.get_height()),
         )
-    tela.blit(texto_render, (card.x + 18, card.centery - texto_render.get_height() // 2))
+    tela.blit(texto_render, (card.x + 20, card.centery - texto_render.get_height() // 2))

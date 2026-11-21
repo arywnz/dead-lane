@@ -10,6 +10,7 @@ from src.configuracao import (
     COMPRIMENTO_CARRO,
     COMPRIMENTO_ONIBUS,
     COMPRIMENTO_PERCURSO_M,
+    CONFIG_TRECHOS,
     DISTANCIA_SEGURA_MESMA_FAIXA_M,
     ESCALA_PISTA_PX_POR_M,
     FAIXAS_PISTA,
@@ -111,7 +112,14 @@ class GerenciadorTrafego:
         distancia_ciclista_m: float,
         zonas_bloqueadas: Sequence[tuple[float, float]] = (),
         veiculos_externos: Sequence[Veiculo] = (),
+        indice_trecho: int | None = None,
+        zonas_sem_trafego: Sequence[tuple[float, float]] = (),
     ) -> None:
+        if indice_trecho is not None:
+            config = CONFIG_TRECHOS[min(indice_trecho, len(CONFIG_TRECHOS) - 1)]
+            self.intervalo_m = config["intervalo_trafego_m"]
+            self.max_veiculos = config["max_veiculos_ambiente"]
+
         for veiculo in self.veiculos:
             veiculo.atualizar(delta_s)
 
@@ -133,6 +141,7 @@ class GerenciadorTrafego:
                     self._proximo_marco_spawn_m,
                     zonas_bloqueadas=zonas_bloqueadas,
                     veiculos_externos=veiculos_externos,
+                    zonas_sem_trafego=zonas_sem_trafego,
                 )
             self._proximo_marco_spawn_m += self.intervalo_m
 
@@ -170,7 +179,15 @@ class GerenciadorTrafego:
         distancia_spawn_m: float,
         zonas_bloqueadas: Sequence[tuple[float, float]],
         veiculos_externos: Sequence[Veiculo],
+        zonas_sem_trafego: Sequence[tuple[float, float]] = (),
     ) -> None:
+        # Mantém corredor livre nos encontros com ônibus de ponto cego
+        if any(inicio <= distancia_spawn_m <= fim for inicio, fim in zonas_sem_trafego):
+            return
+        for externo in veiculos_externos:
+            if externo.eh_perigo and abs(externo.distancia_m - distancia_spawn_m) <= 26.0:
+                return
+
         tipo, faixa_pref, cor_variante, ajuste_vel = _PADRAO_SPAWN[self._indice_padrao % len(_PADRAO_SPAWN)]
         self._indice_padrao += 1
 

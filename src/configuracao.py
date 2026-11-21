@@ -65,3 +65,48 @@ DURACAO_AVISO_PONTO_CEGO_S = 2.8
 DURACAO_PONTO_CEGO_ATIVO_S = 1.5
 LARGURA_PONTO_CEGO = 175.0
 DESLOCAMENTO_FECHAMENTO_ONIBUS_PX = 26.0
+
+CONFIG_TRECHOS = (
+    {
+        "nome": NOMES_TRECHOS[0],
+        "rotulo_densidade": "Tráfego leve",
+        "intervalo_trafego_m": 135.0,
+        "max_veiculos_ambiente": 2,
+        "perigos": (
+            ("porta", 95.0),
+            ("ponto_cego", 260.0),
+            ("porta", 435.0),
+            ("ponto_cego", 605.0),
+        ),
+    },
+    {
+        "nome": NOMES_TRECHOS[1],
+        "rotulo_densidade": "Tráfego moderado",
+        "intervalo_trafego_m": 90.0,
+        "max_veiculos_ambiente": 3,
+        "perigos": (
+            ("porta", 830.0),
+            ("ponto_cego", 945.0),
+            ("porta", 1065.0),
+            ("ponto_cego", 1180.0),
+            ("porta", 1295.0),
+            ("ponto_cego", 1410.0),
+        ),
+    },
+    {
+        "nome": NOMES_TRECHOS[2],
+        "rotulo_densidade": "Tráfego intenso",
+        "intervalo_trafego_m": 62.0,
+        "max_veiculos_ambiente": 5,
+        "perigos": (
+            ("porta", 1575.0),
+            ("ponto_cego", 1660.0),
+            ("porta", 1745.0),
+            ("ponto_cego", 1830.0),
+            ("porta", 1915.0),
+            ("ponto_cego", 2000.0),
+            ("porta", 2085.0),
+            ("ponto_cego", 2165.0),
+        ),
+    },
+)

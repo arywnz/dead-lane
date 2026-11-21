@@ -10,6 +10,7 @@ from src.configuracao import (
     CENTRO_PISTA_X,
     CICLISTA_TELA_Y,
     COMPRIMENTO_CARRO_ESTACIONADO,
+    CONFIG_TRECHOS,
     DESLOCAMENTO_FECHAMENTO_ONIBUS_PX,
     DISTANCIA_AVISO_PONTO_CEGO_M,
     DISTANCIA_AVISO_PORTA_M,
@@ -176,3 +177,146 @@ class PerigoPontoCego:
 
     def houve_incidente(self, area_ciclista: pygame.FRect, distancia_ciclista_m: float) -> bool:
         return self.fase is FasePontoCego.ATIVO and self.ciclista_na_zona(area_ciclista, distancia_ciclista_m)
+
+
+def criar_perigos_percurso() -> tuple[list[PerigoPorta], list[PerigoPontoCego]]:
+    """Constrói os perigos distribuídos nos três trechos com intervalos decrescentes."""
+    portas: list[PerigoPorta] = []
+    pontos_cegos: list[PerigoPontoCego] = []
+    contador_porta = 0
+    contador_ponto_cego = 0
+
+    for indice_trecho, config in enumerate(CONFIG_TRECHOS):
+        for tipo, marco_m in config["perigos"]:
+            if tipo == "porta":
+                contador_porta += 1
+                portas.append(
+                    PerigoPorta(
+                        distancia_m=marco_m,
+                        trecho=indice_trecho,
+                        id_evento=f"porta_{contador_porta}",
+                    )
+                )
+            elif tipo == "ponto_cego":
+                contador_ponto_cego += 1
+                pontos_cegos.append(
+                    PerigoPontoCego(
+                        distancia_encontro_m=marco_m,
+                        trecho=indice_trecho,
+                        id_evento=f"ponto_cego_{contador_ponto_cego}",
+                    )
+                )
+
+    return portas, pontos_cegos
+
+
+@dataclass
+class GerenciadorPerigos:
+    """Coordena a ativação, consultas e colisões dos perigos ao longo dos três trechos."""
+
+    portas: list[PerigoPorta]
+    pontos_cegos: list[PerigoPontoCego]
+    _feedbacks_emitidos: set[str] = field(default_factory=set, init=False)
+
+    @classmethod
+    def criar_padrao(cls) -> "GerenciadorPerigos":
+        portas, pontos_cegos = criar_perigos_percurso()
+        return cls(portas=portas, pontos_cegos=pontos_cegos)
+
+    def atualizar(
+        self,
+        delta_s: float,
+        distancia_ciclista_m: float,
+        area_ciclista: pygame.FRect,
+        *,
+        permitir_aviso: bool = True,
+    ) -> None:
+        for porta in self.portas:
+            em_andamento = porta.fase in (FasePorta.AVISO, FasePorta.ABERTA)
+            proxima = -15.0 <= porta.distancia_m - distancia_ciclista_m <= 25.0
+            if em_andamento or (proxima and porta.fase is FasePorta.AGUARDANDO):
+                porta.atualizar(delta_s, distancia_ciclista_m, permitir_aviso=permitir_aviso)
+
+        for ponto_cego in self.pontos_cegos:
+            visivel = (
+                ponto_cego.onibus is not None
+                and -18.0 <= ponto_cego.onibus.distancia_m - distancia_ciclista_m <= 48.0
+            )
+            em_aproximacao = (
+                ponto_cego.onibus is None
+                and distancia_ciclista_m >= ponto_cego.distancia_encontro_m - ANTECEDENCIA_ENTRADA_ONIBUS_M - 4.0
+            )
+            if visivel or em_aproximacao:
+                ponto_cego.atualizar(
+                    delta_s,
+                    distancia_ciclista_m,
+                    area_ciclista,
+                    permitir_aviso=permitir_aviso,
+                )
+
+    def porta_em_destaque(self) -> PerigoPorta | None:
+        abertas = [p for p in self.portas if p.fase is FasePorta.ABERTA]
+        if abertas:
+            return abertas[0]
+        avisos = [p for p in self.portas if p.fase is FasePorta.AVISO]
+        return avisos[0] if avisos else None
+
+    def ponto_cego_em_destaque(self) -> PerigoPontoCego | None:
+        ativos = [p for p in self.pontos_cegos if p.fase is FasePontoCego.ATIVO]
+        if ativos:
+            return ativos[0]
+        avisos = [p for p in self.pontos_cegos if p.fase is FasePontoCego.AVISO]
+        return avisos[0] if avisos else None
+
+    def onibus_ativos(self, distancia_ciclista_m: float) -> list[Veiculo]:
+        return [
+            p.onibus
+            for p in self.pontos_cegos
+            if p.onibus is not None and -16.0 <= p.onibus.distancia_m - distancia_ciclista_m <= 48.0
+        ]
+
+    def zonas_bloqueadas_faixa_direita(self, distancia_ciclista_m: float) -> list[tuple[float, float]]:
+        zonas: list[tuple[float, float]] = []
+        for p in self.portas:
+            if -15.0 <= p.distancia_m - distancia_ciclista_m <= 45.0:
+                zonas.append((p.distancia_m - 12.0, p.distancia_m + 12.0))
+        return zonas
+
+    def zonas_exclusivas_ponto_cego(self, distancia_ciclista_m: float) -> list[tuple[float, float]]:
+        zonas: list[tuple[float, float]] = []
+        for pc in self.pontos_cegos:
+            if -20.0 <= pc.distancia_encontro_m - distancia_ciclista_m <= 85.0:
+                zonas.append((pc.distancia_encontro_m - 42.0, pc.distancia_encontro_m + 50.0))
+        return zonas
+
+    def verificar_colisao(self, area_ciclista: pygame.FRect, distancia_ciclista_m: float) -> str | None:
+        for porta in self.portas:
+            if porta.fase is FasePorta.ABERTA and area_ciclista.colliderect(porta.area_porta(distancia_ciclista_m)):
+                return "Colisão com a porta. R para reiniciar."
+        for pc in self.pontos_cegos:
+            if pc.houve_incidente(area_ciclista, distancia_ciclista_m):
+                return "Ficou no ponto cego do ônibus. R para reiniciar."
+            if (
+                pc.onibus is not None
+                and -12.0 <= pc.onibus.distancia_m - distancia_ciclista_m <= 12.0
+                and area_ciclista.colliderect(pc.onibus.area_colisao(distancia_ciclista_m))
+            ):
+                return "Colisão com o ônibus. R para reiniciar."
+        return None
+
+    def consumir_feedback_seguro(self) -> str | None:
+        for pc in self.pontos_cegos:
+            if pc.saiu_com_seguranca and pc.id_evento not in self._feedbacks_emitidos:
+                self._feedbacks_emitidos.add(pc.id_evento)
+                return "Saiu do ponto cego com segurança!"
+        return None
+
+    def marcos_normalizados(self, comprimento_total_m: float) -> list[tuple[float, bool]]:
+        """Retorna pares (progresso_0_a_1, ja_passou_ou_ativo) para exibição no HUD."""
+        marcos: list[tuple[float, bool]] = []
+        for porta in self.portas:
+            marcos.append((porta.distancia_m / comprimento_total_m, porta.fase is FasePorta.FECHADA))
+        for pc in self.pontos_cegos:
+            marcos.append((pc.distancia_encontro_m / comprimento_total_m, pc.fase is FasePontoCego.ENCERRADO))
+        marcos.sort(key=lambda item: item[0])
+        return marcos
