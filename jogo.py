@@ -62,6 +62,11 @@ def _obter_mensagem_status(
     return None
 
 
+def criar_partida() -> tuple[Ciclista, Percurso, GerenciadorPerigos, GerenciadorTrafego]:
+    """Cria o estado inicial do percurso; usado ao abrir o jogo e ao reiniciar com R."""
+    return Ciclista(), Percurso(), GerenciadorPerigos.criar_padrao(), GerenciadorTrafego()
+
+
 def executar() -> None:
     pygame.display.init()
     pygame.font.init()
@@ -69,10 +74,7 @@ def executar() -> None:
         tela = pygame.display.set_mode((LARGURA_JANELA, ALTURA_JANELA))
         pygame.display.set_caption("Dead Lane")
         relogio = pygame.time.Clock()
-        ciclista = Ciclista()
-        percurso = Percurso()
-        perigos = GerenciadorPerigos.criar_padrao()
-        trafego = GerenciadorTrafego()
+        ciclista, percurso, perigos, trafego = criar_partida()
         motivo_colisao: str | None = None
         tempo_total_s = 0.0
         feedback_seguro_s = 0.0
@@ -93,10 +95,7 @@ def executar() -> None:
                     if evento.key == pygame.K_ESCAPE:
                         return
                     if evento.key == pygame.K_r:
-                        ciclista = Ciclista()
-                        percurso = Percurso()
-                        perigos = GerenciadorPerigos.criar_padrao()
-                        trafego = GerenciadorTrafego()
+                        ciclista, percurso, perigos, trafego = criar_partida()
                         motivo_colisao = None
                         feedback_seguro_s = 0.0
 
