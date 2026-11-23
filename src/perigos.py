@@ -76,6 +76,38 @@ class PerigoPorta:
         carro = self.area_carro(distancia_ciclista_m)
         return pygame.FRect(carro.left - ALCANCE_PORTA, carro.top + ALTURA_PORTA / 2, ALCANCE_PORTA, ALTURA_PORTA)
 
+    def ciclista_em_rota_de_colisao(
+        self,
+        area_ciclista: pygame.FRect,
+        distancia_ciclista_m: float,
+        velocidade_mps: float,
+    ) -> bool:
+        """Indica se, mantendo a posição lateral e a velocidade atuais, o ciclista encostaria na porta aberta."""
+        if self.fase is FasePorta.FECHADA:
+            return False
+        porta = self.area_porta(distancia_ciclista_m)
+        if area_ciclista.right <= porta.left or area_ciclista.left >= porta.right:
+            return False
+
+        tolerancia_m = (area_ciclista.height / 2 + ALTURA_PORTA / 2) / ESCALA_PISTA_PX_POR_M
+        ate_inicio_contato_m = self.distancia_m - tolerancia_m - distancia_ciclista_m
+        ate_fim_contato_m = self.distancia_m + tolerancia_m - distancia_ciclista_m
+        if ate_fim_contato_m <= 0:
+            return False
+
+        tempo_decorrido_s = self._tempo_decorrido_s or 0.0
+        abre_em_s = DURACAO_AVISO_PORTA_S - tempo_decorrido_s
+        fecha_em_s = DURACAO_AVISO_PORTA_S + DURACAO_PORTA_ABERTA_S - tempo_decorrido_s
+        if ate_inicio_contato_m <= 0:
+            # Já está ao lado da porta: o risco dura enquanto ela ainda puder abrir nele.
+            fim_contato_s = ate_fim_contato_m / velocidade_mps if velocidade_mps > 0 else float("inf")
+            return fim_contato_s > abre_em_s
+        if velocidade_mps <= 0:
+            return False
+        inicio_contato_s = ate_inicio_contato_m / velocidade_mps
+        fim_contato_s = ate_fim_contato_m / velocidade_mps
+        return inicio_contato_s < fecha_em_s and fim_contato_s > abre_em_s
+
 
 @dataclass
 class PerigoPontoCego:
@@ -290,18 +322,27 @@ class GerenciadorPerigos:
         return zonas
 
     def verificar_colisao(self, area_ciclista: pygame.FRect, distancia_ciclista_m: float) -> str | None:
+        colisao = self.verificar_colisao_detalhada(area_ciclista, distancia_ciclista_m)
+        return colisao[0] if colisao is not None else None
+
+    def verificar_colisao_detalhada(
+        self,
+        area_ciclista: pygame.FRect,
+        distancia_ciclista_m: float,
+    ) -> tuple[str, str] | None:
+        """Retorna (motivo, id_evento) do perigo que causou a colisão, ou None."""
         for porta in self.portas:
             if porta.fase is FasePorta.ABERTA and area_ciclista.colliderect(porta.area_porta(distancia_ciclista_m)):
-                return "Colisão com a porta. R para reiniciar."
+                return "Colisão com a porta. R para reiniciar.", porta.id_evento
         for pc in self.pontos_cegos:
             if pc.houve_incidente(area_ciclista, distancia_ciclista_m):
-                return "Ficou no ponto cego do ônibus. R para reiniciar."
+                return "Ficou no ponto cego do ônibus. R para reiniciar.", pc.id_evento
             if (
                 pc.onibus is not None
                 and -12.0 <= pc.onibus.distancia_m - distancia_ciclista_m <= 12.0
                 and area_ciclista.colliderect(pc.onibus.area_colisao(distancia_ciclista_m))
             ):
-                return "Colisão com o ônibus. R para reiniciar."
+                return "Colisão com o ônibus. R para reiniciar.", pc.id_evento
         return None
 
     def consumir_feedback_seguro(self) -> str | None:

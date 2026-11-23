@@ -66,6 +66,11 @@ DURACAO_PONTO_CEGO_ATIVO_S = 1.5
 LARGURA_PONTO_CEGO = 175.0
 DESLOCAMENTO_FECHAMENTO_ONIBUS_PX = 26.0
 
+# Métricas: o risco resolvido até este tempo após o aviso conta como antecipação; depois, como reação tardia.
+LIMITE_ANTECIPACAO_PORTA_S = DURACAO_AVISO_PORTA_S
+LIMITE_ANTECIPACAO_PONTO_CEGO_S = DURACAO_AVISO_PONTO_CEGO_S / 2
+PASTA_RESULTADOS = "resultados"
+
 CONFIG_TRECHOS = (
     {
         "nome": NOMES_TRECHOS[0],

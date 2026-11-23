@@ -1,3 +1,5 @@
+import argparse
+
 import pygame
 
 from src.cenario_visual import (
@@ -24,6 +26,7 @@ from src.configuracao import (
     LARGURA_JANELA,
     TEMPO_MAXIMO_QUADRO_S,
 )
+from src.metricas import RegistroDesempenho
 from src.percurso import Percurso
 from src.perigos import FasePontoCego, FasePorta, GerenciadorPerigos
 from src.trafego import GerenciadorTrafego
@@ -67,7 +70,9 @@ def criar_partida() -> tuple[Ciclista, Percurso, GerenciadorPerigos, Gerenciador
     return Ciclista(), Percurso(), GerenciadorPerigos.criar_padrao(), GerenciadorTrafego()
 
 
-def executar() -> None:
+def executar(jogador: str = "") -> None:
+    registro = RegistroDesempenho(jogador=jogador)
+    tentativa_encerrada = False
     pygame.display.init()
     pygame.font.init()
     try:
@@ -95,6 +100,9 @@ def executar() -> None:
                     if evento.key == pygame.K_ESCAPE:
                         return
                     if evento.key == pygame.K_r:
+                        if not tentativa_encerrada:
+                            registro.encerrar_tentativa()
+                        tentativa_encerrada = False
                         ciclista, percurso, perigos, trafego = criar_partida()
                         motivo_colisao = None
                         feedback_seguro_s = 0.0
@@ -143,12 +151,30 @@ def executar() -> None:
                     and ponto_cego_destaque.ciclista_na_zona(area_ciclista, ciclista.distancia_m)
                 )
 
-                motivo_colisao = perigos.verificar_colisao(area_ciclista, ciclista.distancia_m)
-                if motivo_colisao is None:
+                registro.atualizar(
+                    tempo_total_s,
+                    perigos,
+                    area_ciclista,
+                    ciclista.distancia_m,
+                    ciclista.velocidade_mps,
+                )
+                colisao_perigo = perigos.verificar_colisao_detalhada(area_ciclista, ciclista.distancia_m)
+                if colisao_perigo is not None:
+                    motivo_colisao, id_evento = colisao_perigo
+                    registro.registrar_colisao(perigos, id_evento, motivo_colisao)
+                else:
                     for veiculo in trafego.veiculos:
                         if area_ciclista.colliderect(veiculo.area_colisao(ciclista.distancia_m)):
                             motivo_colisao = "Colisão com veículo na avenida. R para reiniciar."
+                            registro.registrar_colisao_trafego()
                             break
+
+                if motivo_colisao is not None:
+                    registro.encerrar_tentativa()
+                    tentativa_encerrada = True
+                elif percurso.concluido:
+                    registro.encerrar_tentativa(tempo_vitoria_s=tempo_total_s)
+                    tentativa_encerrada = True
 
             tela.fill(FUNDO)
             desenhar_cenario_avenida(tela, ciclista.distancia_m, percurso.indice_trecho)
@@ -189,8 +215,18 @@ def executar() -> None:
             )
             pygame.display.flip()
     finally:
+        if not tentativa_encerrada:
+            registro.encerrar_tentativa()
         pygame.quit()
+        if registro.caminho_csv.exists():
+            print(f"Resultados salvos em {registro.caminho_csv}")
+
+
+def _ler_argumentos() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Dead Lane: serious game sobre percepção de riscos no trânsito.")
+    parser.add_argument("--jogador", default="", help="nome ou código do participante, gravado nos resultados")
+    return parser.parse_args()
 
 
 if __name__ == "__main__":
-    executar()
+    executar(_ler_argumentos().jogador)

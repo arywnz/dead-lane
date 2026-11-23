@@ -7,6 +7,7 @@ import pygame
 
 from src.ciclista import Ciclista
 from src.configuracao import ALTURA_COLISAO_CICLISTA, CICLISTA_TELA_Y, LARGURA_COLISAO_CICLISTA
+from src.metricas import RegistroDesempenho
 from src.perigos import GerenciadorPerigos
 
 DELTA_S = 1 / 60
@@ -33,6 +34,7 @@ def criar_area_ciclista(x: float) -> pygame.FRect:
 class Simulacao:
     ciclista: Ciclista
     perigos: GerenciadorPerigos
+    registro: RegistroDesempenho | None = None
     area: pygame.FRect = field(init=False)
     tempo_s: float = 0.0
 
@@ -40,11 +42,25 @@ class Simulacao:
         self.area = criar_area_ciclista(self.ciclista.x)
 
     def passo(self, comando: Comando = SEGUIR) -> str | None:
+        self.tempo_s += DELTA_S
         self.ciclista.atualizar(DELTA_S, comando.lateral, comando.acelerar, comando.frear)
         self.area.centerx = self.ciclista.x
         self.perigos.atualizar(DELTA_S, self.ciclista.distancia_m, self.area)
-        self.tempo_s += DELTA_S
-        return self.perigos.verificar_colisao(self.area, self.ciclista.distancia_m)
+        if self.registro is not None:
+            self.registro.atualizar(
+                self.tempo_s,
+                self.perigos,
+                self.area,
+                self.ciclista.distancia_m,
+                self.ciclista.velocidade_mps,
+            )
+        colisao = self.perigos.verificar_colisao_detalhada(self.area, self.ciclista.distancia_m)
+        if colisao is None:
+            return None
+        motivo, id_evento = colisao
+        if self.registro is not None:
+            self.registro.registrar_colisao(self.perigos, id_evento, motivo)
+        return motivo
 
     def executar(
         self,
