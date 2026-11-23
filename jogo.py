@@ -135,7 +135,7 @@ def executar(jogador: str = "") -> None:
 
                 onibus_perigo = perigos.onibus_ativos(ciclista.distancia_m)
                 zonas_bloqueadas = perigos.zonas_bloqueadas_faixa_direita(ciclista.distancia_m)
-                zonas_sem_trafego = perigos.zonas_exclusivas_ponto_cego(ciclista.distancia_m)
+                zonas_sem_trafego = perigos.zonas_sem_trafego(ciclista.distancia_m)
                 trafego.atualizar(
                     delta_s,
                     ciclista.distancia_m,

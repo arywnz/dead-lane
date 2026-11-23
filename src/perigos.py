@@ -23,8 +23,10 @@ from src.configuracao import (
     LARGURA_CARRO_ESTACIONADO,
     LARGURA_PISTA,
     LARGURA_PONTO_CEGO,
+    MARGEM_SEM_TRAFEGO_COMPARAVEL_M,
     POSICAO_PONTO_CEGO_M,
     POSICAO_PORTA_M,
+    SITUACOES_COMPARAVEIS,
     VELOCIDADE_ONIBUS_MPS,
 )
 from src.trafego import TipoVeiculo, Veiculo
@@ -319,6 +321,19 @@ class GerenciadorPerigos:
         for pc in self.pontos_cegos:
             if -20.0 <= pc.distancia_encontro_m - distancia_ciclista_m <= 85.0:
                 zonas.append((pc.distancia_encontro_m - 42.0, pc.distancia_encontro_m + 50.0))
+        return zonas
+
+    def zonas_sem_trafego(self, distancia_ciclista_m: float) -> list[tuple[float, float]]:
+        """Zonas sem tráfego comum: encontros com ônibus e, com margem maior, as situações da comparação início × fim."""
+        zonas = self.zonas_exclusivas_ponto_cego(distancia_ciclista_m)
+        ids_comparaveis = {id_evento for par in SITUACOES_COMPARAVEIS.values() for id_evento in par}
+        antes_m, depois_m = MARGEM_SEM_TRAFEGO_COMPARAVEL_M
+        marcos = [(p.id_evento, p.distancia_m) for p in self.portas]
+        marcos += [(pc.id_evento, pc.distancia_encontro_m) for pc in self.pontos_cegos]
+        for id_evento, marco_m in marcos:
+            # O tráfego nasce à frente do ciclista; a zona vale enquanto ainda pode receber veículos novos.
+            if id_evento in ids_comparaveis and -depois_m <= marco_m - distancia_ciclista_m <= antes_m + 45.0:
+                zonas.append((marco_m - antes_m, marco_m + depois_m))
         return zonas
 
     def verificar_colisao(self, area_ciclista: pygame.FRect, distancia_ciclista_m: float) -> str | None:

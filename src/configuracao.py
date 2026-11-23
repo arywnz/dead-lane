@@ -71,6 +71,15 @@ LIMITE_ANTECIPACAO_PORTA_S = DURACAO_AVISO_PORTA_S
 LIMITE_ANTECIPACAO_PONTO_CEGO_S = DURACAO_AVISO_PONTO_CEGO_S / 2
 PASTA_RESULTADOS = "resultados"
 
+# Situações equivalentes comparadas no início (trecho 1) e no fim (trecho 3) do percurso.
+# Cada par usa o mesmo tipo de perigo, com o mesmo aviso, e sem tráfego comum por perto.
+SITUACOES_COMPARAVEIS = {
+    "porta": ("porta_1", "porta_9"),
+    "ponto_cego": ("ponto_cego_1", "ponto_cego_9"),
+}
+# Trecho sem geração de tráfego comum em volta das situações comparáveis (metros antes, metros depois).
+MARGEM_SEM_TRAFEGO_COMPARAVEL_M = (80.0, 50.0)
+
 CONFIG_TRECHOS = (
     {
         "nome": NOMES_TRECHOS[0],

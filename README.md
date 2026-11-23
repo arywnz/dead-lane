@@ -45,6 +45,18 @@ O registro começa no aviso do perigo e acompanha, quadro a quadro, se o ciclist
 
 Os limites ficam em `src/configuracao.py` (`LIMITE_ANTECIPACAO_PORTA_S` e `LIMITE_ANTECIPACAO_PONTO_CEGO_S`). Batidas em veículos comuns da avenida não são perigos planejados e ficam contadas à parte. A função `RegistroDesempenho.resumo()` (em `src/metricas.py`) devolve os totais, o tempo médio de resposta e o tipo de erro mais comum.
 
+## Comparação em situações equivalentes
+
+Para medir se o jogador melhora ao longo do percurso, o jogo compara duas situações equivalentes de cada tipo: a primeira porta e o primeiro ponto cego do trecho 1 (`porta_1` e `ponto_cego_1`) com a última porta e o último ponto cego do trecho 3 (`porta_9` e `ponto_cego_9`). Os pares estão em `SITUACOES_COMPARAVEIS` (`src/configuracao.py`). Cada par tem o mesmo aviso e nenhum veículo comum nas faixas usadas para evitar o perigo, mesmo na hora do rush.
+
+Depois de jogar, gere o relatório a partir de todos os CSVs em `resultados/`:
+
+```powershell
+.\.venv\Scripts\python.exe comparar_desempenho.py
+```
+
+O relatório fica em `docs/comparacao-desempenho.md`, com antecipações, reações tardias, falhas e tempo médio de resposta no início e no fim, por jogador. O roteiro para o teste com alguém de fora do grupo está em [docs/teste-com-jogador.md](docs/teste-com-jogador.md).
+
 ## Testes
 
 Instale as dependências de desenvolvimento e rode os testes automatizados na raiz do projeto:
@@ -57,3 +69,5 @@ Instale as dependências de desenvolvimento e rode os testes automatizados na ra
 Os testes em `tests/test_porta.py` simulam o percurso quadro a quadro e conferem a colisão com a porta do carro estacionado: o contato com a porta aberta, a passagem segura ao frear ou mudar de faixa durante o aviso, a porta que só causa colisão quando está aberta e o reinício do percurso após uma colisão.
 
 Os testes em `tests/test_metricas.py` conferem a classificação de cada perigo em antecipação, reação tardia ou falha, o tempo de resposta, a gravação em CSV por tentativa e o resumo de desempenho.
+
+Os testes em `tests/test_comparacao.py` conferem que os pares comparados têm a mesma mecânica e ficam livres de tráfego em várias velocidades, além do cálculo e do relatório da comparação.
