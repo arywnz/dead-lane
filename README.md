@@ -1,73 +1,144 @@
 # Dead Lane
 
-Serious game 2D sobre percepção de riscos no trânsito, desenvolvido para o Desafio P2 de Desenvolvimento de Jogos Digitais.
+**Dead Lane** é um *serious game* 2D em visão superior (top-down) focado no ensino e treino de pilotagem defensiva para ciclistas urbanos. O projeto foi desenvolvido para o Desafio P2 de Desenvolvimento de Jogos Digitais.
 
-O protótipo inicial permite pedalar, acelerar, frear e mudar de posição na pista.
+O objetivo do jogador é percorrer com segurança uma avenida movimentada de 2.250 metros dividida em 3 períodos com intensidades de tráfego crescentes, aprendendo a antecipar perigos críticos como a abertura repentina de portas de carros estacionados (*dooring*) e o ponto cego de ônibus em conversão (*angles morts*).
 
-## Ambiente local
+---
 
-Com Python 3.14 instalado, execute na raiz do projeto no Windows:
+## Recursos e Funcionalidades
 
+- **Sprites e Identidade Visual Própria**: Ciclista em visão zenital (com animação de frenagem), veículos de passeio com múltiplas variações de cor e faróis noturnos, ônibus urbano com setas dinâmicas e carros estacionados com pisca-alerta.
+- **Sinalização Visual de Risco**:
+  - Área demarcada de abertura de portas de carros estacionados.
+  - Zona visual de ponto cego do ônibus com setas de recuo recomendando a frenagem preventiva.
+  - Alerta pulsante na borda da tela com retículo de perigo nos cantos ao entrar em zonas críticas.
+- **Tela de Instruções de Pilotagem**: Apresentada no início para introduzir os controles e ensinar o reconhecimento dos alertas antes de o ciclista entrar na via.
+- **Boletim de Pilotagem Defensiva (Fim de Fase e Pausa)**:
+  - Telemetria em tempo real com contagem de antecipações, reações tardias, colisões e tempo médio de resposta.
+  - Classificação e Nota final com Patentes (Rank S, A, B ou C).
+  - Comparativo de evolução pedagógica: desempenho no início (Trecho 1) vs. fim (Trecho 3).
+  - Diagnóstico pedagógico e dica personalizada gerada a partir do padrão de erros do jogador.
+  - Funciona também como menu de pausa durante a corrida (teclas `B`, `P` ou `Esc`), congelando tempo e tráfego e permitindo continuar, recomeçar ou sair.
+
+---
+
+## Controles de Pilotagem
+
+| Tecla / Atalho | Ação | Descrição |
+|---|---|---|
+| **W / ↑** | Acelerar | Pedala para frente, aumentando a velocidade até o limite máximo. |
+| **S / ↓** | Frear (Defensivo) | Reduz a velocidade; fundamental para sair do ponto cego e recuar. |
+| **A / ←** e **D / →** | Mudar de Posição | Desloca o ciclista lateralmente entre as faixas da pista. |
+| **B / P / Esc** | Pausa / Boletim | Congela o jogo e abre o Boletim de Pilotagem com telemetria parcial. |
+| **H / I** | Instruções | Abre a tela de instruções e reconhecimento de perigos. |
+| **R** | Reiniciar | Reinicia a tentativa imediatamente a partir do marco zero. |
+| **Esc / Q** | Sair | Fecha o jogo (ou despausa se estiver no boletim de pausa). |
+
+---
+
+## Execução em Ambiente de Desenvolvimento
+
+### Pré-requisitos
+- Python 3.11 a 3.14 instalado.
+- Ambiente virtual configurado.
+
+### Configuração no Windows (PowerShell / Prompt)
 ```powershell
+# 1. Criação do ambiente virtual
 py -3.14 -m venv .venv
+
+# 2. Instalação das dependências
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
+
+# 3. Execução do jogo
+.\.venv\Scripts\python.exe jogo.py
 ```
 
-## Executar o protótipo
+### Configuração no Linux / macOS
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+python jogo.py
+```
 
-Na raiz, execute `.\.venv\Scripts\python.exe jogo.py`.
+### Parâmetros de Linha de Comando
+- `--jogador "Nome"`: Grava o nome do ciclista no CSV de telemetria e no cabeçalho do Boletim.
+- `--sem-instrucoes`: Pula a tela inicial de instruções, iniciando direto na pedalada.
 
-- **W / ↑** acelera.
-- **S / ↓** freia até parar.
-- **A / ←** e **D / →** movem o ciclista para os lados enquanto ele avança.
-- **R** reinicia o percurso.
-- **Esc** encerra a janela.
+Exemplo:
+```powershell
+.\.venv\Scripts\python.exe jogo.py --jogador "Ciclista 1"
+```
 
-O carro estacionado à direita avisa antes de abrir a porta. Veículos e ônibus seguem na avenida no mesmo sentido do ciclista, e os ônibus de evento sinalizam a área de ponto cego à direita antes de fechar a trajetória — freie ou ultrapasse pela esquerda para evitar a zona de risco.
+---
 
-O percurso tem três trechos de 750 m (*Manhã tranquila*, *Horário de almoço* e *Hora do rush*), com perigos isolados no início e intervalos progressivamente menores junto ao aumento do tráfego nos trechos seguintes. Os checkpoints de 750 m e 1.500 m deixam o ciclista avançar e bloqueiam novos avisos de perigo por 2 segundos. Aos 2.250 m, o jogo mostra a vitória. Pressione **R** para voltar ao início.
+## Empacotamento para Windows (Standalone `.exe`)
 
-## Métricas de desempenho
+O projeto já conta com o arquivo de especificação [`build_windows.spec`](build_windows.spec) e um script automatizado [`build_windows.bat`](build_windows.bat), configurados para empacotar o jogo em um único arquivo executável autossuficiente (`DeadLane.exe`), sem abrir terminal (`--windowed`) e incluindo a pasta `assets/` compatível com `sys._MEIPASS`.
 
-Cada perigo (porta do carro ou ponto cego do ônibus) gera um resultado por tentativa, gravado em `resultados/sessao_AAAAMMDD_HHMMSS.csv` (separado por `;`, abre direto no Excel). Para identificar o participante de um teste, execute:
+### Método 1: Compilação Automática via `.bat` (Recomendado)
+Basta dar um duplo-clique no arquivo **`build_windows.bat`** (ou executá-lo pelo terminal):
+
+```cmd
+build_windows.bat
+```
+
+O script cuidará de:
+1. Verificar e configurar o ambiente virtual `.venv`.
+2. Instalar as dependências e o PyInstaller.
+3. Gerar e validar os assets PNG em `assets/`.
+4. Compilar o executável final em `dist\DeadLane.exe`.
+
+### Método 2: Compilação Manual via Terminal
+Se preferir rodar passo a passo:
 
 ```powershell
-.\.venv\Scripts\python.exe jogo.py --jogador "Participante 1"
+# 1. Instale o PyInstaller no ambiente virtual
+.\.venv\Scripts\python.exe -m pip install pyinstaller
+
+# 2. Execute a compilação a partir da especificação
+.\.venv\Scripts\pyinstaller.exe --clean build_windows.spec
 ```
 
-O registro começa no aviso do perigo e acompanha, quadro a quadro, se o ciclista está em risco — em rota de colisão com a porta ou dentro do ponto cego. O **tempo de resposta** é o intervalo entre o aviso e o instante em que o ciclista saiu do risco pela última vez, ou seja, a ação que realmente resolveu a situação.
+Ao término, o executável estará pronto na pasta `dist\`:
+```powershell
+.\dist\DeadLane.exe
+```
 
-| Resultado | Critério |
+---
+
+## Métricas de Desempenho e Telemetria
+
+Os dados de cada partida são gravados na pasta `resultados/sessao_AAAAMMDD_HHMMSS.csv` (separado por `;`, abrindo direto no Microsoft Excel e LibreOffice Calc).
+
+| Resultado | Critério Defensivo |
 |---|---|
-| **Antecipação** | Resolveu o risco em até 1,0 s após o aviso da porta (antes de ela abrir) ou em até 1,4 s após o aviso do ônibus (primeira metade do aviso). Quem já estava em posição segura tem tempo de resposta 0. |
-| **Reação tardia** | Resolveu o risco sem colidir, mas depois desses limites. |
-| **Falha** | Colidiu com a porta ou com o ônibus, ou ficou no ponto cego quando o ônibus fechou. |
+| **Antecipação** | O ciclista resolveu o perigo em até 1,0 s após o aviso da porta (antes de ela abrir) ou em até 1,4 s após o aviso do ônibus (primeira metade do tempo de aviso). Se já pedalava em faixa segura, o tempo de resposta é 0 s. |
+| **Reação Tardia** | O ciclista evitou o perigo sem colidir, mas tomou a decisão evasiva após o tempo limite de antecipação. |
+| **Falha / Colisão** | Houve colisão física com a porta aberta, permanência no ponto cego no momento do fechamento do ônibus, ou batida no tráfego da via. |
 
-Os limites ficam em `src/configuracao.py` (`LIMITE_ANTECIPACAO_PORTA_S` e `LIMITE_ANTECIPACAO_PONTO_CEGO_S`). Batidas em veículos comuns da avenida não são perigos planejados e ficam contadas à parte. A função `RegistroDesempenho.resumo()` (em `src/metricas.py`) devolve os totais, o tempo médio de resposta e o tipo de erro mais comum.
-
-## Comparação em situações equivalentes
-
-Para medir se o jogador melhora ao longo do percurso, o jogo compara duas situações equivalentes de cada tipo: a primeira porta e o primeiro ponto cego do trecho 1 (`porta_1` e `ponto_cego_1`) com a última porta e o último ponto cego do trecho 3 (`porta_9` e `ponto_cego_9`). Os pares estão em `SITUACOES_COMPARAVEIS` (`src/configuracao.py`). Cada par tem o mesmo aviso e nenhum veículo comum nas faixas usadas para evitar o perigo, mesmo na hora do rush.
-
-Depois de jogar, gere o relatório a partir de todos os CSVs em `resultados/`:
+### Relatório Comparativo de Evolução
+Para processar os CSVs gerados e comparar as situações equivalentes entre o início e o fim da fase:
 
 ```powershell
 .\.venv\Scripts\python.exe comparar_desempenho.py
 ```
+O resultado consolidado é gerado em `docs/comparacao-desempenho.md`.
 
-O relatório fica em `docs/comparacao-desempenho.md`, com antecipações, reações tardias, falhas e tempo médio de resposta no início e no fim, por jogador. O roteiro para o teste com alguém de fora do grupo está em [docs/teste-com-jogador.md](docs/teste-com-jogador.md).
+---
 
-## Testes
+## Testes Automatizados
 
-Instale as dependências de desenvolvimento e rode os testes automatizados na raiz do projeto:
+O repositório possui uma suíte completa de testes com `pytest`:
 
 ```powershell
 .\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
 .\.venv\Scripts\python.exe -m pytest
 ```
 
-Os testes em `tests/test_porta.py` simulam o percurso quadro a quadro e conferem a colisão com a porta do carro estacionado: o contato com a porta aberta, a passagem segura ao frear ou mudar de faixa durante o aviso, a porta que só causa colisão quando está aberta e o reinício do percurso após uma colisão.
-
-Os testes em `tests/test_metricas.py` conferem a classificação de cada perigo em antecipação, reação tardia ou falha, o tempo de resposta, a gravação em CSV por tentativa e o resumo de desempenho.
-
-Os testes em `tests/test_comparacao.py` conferem que os pares comparados têm a mesma mecânica e ficam livres de tráfego em várias velocidades, além do cálculo e do relatório da comparação.
+- `tests/test_porta.py`: Colisões e janelas temporais de reação a portas de carros estacionados.
+- `tests/test_metricas.py`: Classificação de antecipações, reações tardias e gravação de CSV.
+- `tests/test_comparacao.py`: Validação das situações pareadas do início e fim do percurso.
+- `tests/test_visual_instrucoes.py`: Renderização de sprites, alertas de borda, tela de instruções e boletim (modos fim e pausa).
