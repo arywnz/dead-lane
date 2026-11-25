@@ -184,6 +184,17 @@ def test_calcular_patente():
     pat_c = calcular_patente(resumo_c)
     assert pat_c.rank == "C"
 
+    # Derrota por colisão: sempre Rank C mesmo com boa taxa prévia
+    pat_derrota = calcular_patente(resumo_s, derrota=True)
+    assert pat_derrota.rank == "C"
+    assert pat_derrota.pontuacao <= 45
+
+    # Zero eventos avaliados: nunca deve dar S nem 100%
+    resumo_vazio = ResumoDesempenho(antecipacoes=0, reacoes_tardias=0, falhas=0, colisoes_trafego=0, tempo_medio_resposta_s=None, erro_mais_comum=None)
+    pat_vazio = calcular_patente(resumo_vazio)
+    assert pat_vazio.rank == "C"
+    assert pat_vazio.taxa_antecipacao == 0.0
+
 
 def test_gerar_dica_personalizada():
     dica_porta = gerar_dica_personalizada(ResumoDesempenho(10, 5, 2, 0, 0.4, "porta"))

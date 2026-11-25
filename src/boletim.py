@@ -3,25 +3,25 @@ comparativo de evolução (início vs. fim) e diagnóstico pedagógico personali
 """
 
 from dataclasses import dataclass
-import math
 import pygame
 
 from src.assets import carregar_icone
+from src.cenario_visual import (
+    ASFALTO,
+    AVISO,
+    BORDA_PISTA,
+    DESTAQUE,
+    FUNDO,
+    PAINEL,
+    PERIGO,
+    TEXTO_PRINCIPAL,
+    TEXTO_SECUNDARIO,
+    _quebrar_texto,
+)
 from src.comparacao import Comparacao, DesempenhoSituacao
-from src.metricas import RegistroPerigo, ResultadoPerigo, ResumoDesempenho, resumir
+from src.metricas import ResumoDesempenho
 
-# Cores da interface alinhadas à paleta de Dead Lane
-FUNDO = "#121d1b"
-ASFALTO = "#242c2d"
-BORDA_PISTA = "#465451"
-PAINEL = "#1b2824"
-TEXTO_PRINCIPAL = "#edf1e6"
-TEXTO_SECUNDARIO = "#aebdb4"
-DESTAQUE = "#d8f975"
-AVISO = "#ffcf70"
-PERIGO = "#ff786f"
-AZUL_CIANO = "#a5f3fc"
-VERDE_ESMERALDA = "#6ee7b7"
+VERDE_ESMERALDA = "#34d399"
 
 
 @dataclass(frozen=True)
@@ -34,38 +34,54 @@ class PatenteDesempenho:
     taxa_antecipacao: float
 
 
-def calcular_patente(resumo: ResumoDesempenho) -> PatenteDesempenho:
+def calcular_patente(resumo: ResumoDesempenho, *, derrota: bool = False) -> PatenteDesempenho:
     """Calcula a patente e rank (S, A, B, C) com base no desempenho defensivo."""
     total = resumo.total_perigos
-    taxa_antecipacao = resumo.antecipacoes / total if total > 0 else 1.0
+    taxa_antecipacao = resumo.antecipacoes / total if total > 0 else 0.0
     total_colisoes = resumo.falhas + resumo.colisoes_trafego
 
-    # Pontuação geral de 0 a 100
     pontos = 100
     pontos -= total_colisoes * 25
     pontos -= resumo.reacoes_tardias * 4
     pontuacao = max(0, min(100, pontos))
 
-    # Regras de Rank
+    if derrota or total == 0:
+        if derrota:
+            pontuacao = min(pontuacao, 45)
+            titulo = "Corrida encerrada por colisão"
+            descricao = "Revise os sinais de alerta e mantenha margem lateral."
+        else:
+            pontuacao = 0
+            titulo = "Em andamento"
+            descricao = "Avance pela avenida para registrar eventos de risco."
+        return PatenteDesempenho(
+            rank="C",
+            titulo=titulo,
+            descricao=descricao,
+            cor=PERIGO if derrota else TEXTO_SECUNDARIO,
+            pontuacao=pontuacao,
+            taxa_antecipacao=taxa_antecipacao,
+        )
+
     if total_colisoes == 0 and taxa_antecipacao >= 0.85:
         rank = "S"
-        titulo = "Especialista em Pilotagem Defensiva"
-        descricao = "Excelente visão periférica! Você antecipou todas as ameaças antes que se tornassem críticas."
+        titulo = "Pilotagem Defensiva Exemplar"
+        descricao = "Você antecipou praticamente todas as ameaças antes de ficarem críticas."
         cor = DESTAQUE
     elif total_colisoes == 0 and taxa_antecipacao >= 0.65:
         rank = "A"
         titulo = "Ciclista Defensivo Consciente"
-        descricao = "Ótima conduta preventiva. Quase todos os riscos foram desarmados com antecedência e sem colisões."
+        descricao = "Ótima leitura preventiva e nenhuma colisão no trajeto."
         cor = VERDE_ESMERALDA
     elif total_colisoes <= 2 and taxa_antecipacao >= 0.40:
         rank = "B"
         titulo = "Ciclista em Desenvolvimento"
-        descricao = "Bom domínio básico, mas com reações tardias que quase causaram incidentes em trechos movimentados."
+        descricao = "Bom controle geral, mas com reações tardias em trechos movimentados."
         cor = AVISO
     else:
         rank = "C"
         titulo = "Piloto em Zona de Risco"
-        descricao = "Postura vulnerável no trânsito. Muitas tomadas de decisão foram tardias ou resultaram em colisões."
+        descricao = "Decisões tardias ou colisões comprometeram a segurança na via."
         cor = PERIGO
 
     return PatenteDesempenho(
@@ -78,35 +94,56 @@ def calcular_patente(resumo: ResumoDesempenho) -> PatenteDesempenho:
     )
 
 
-def gerar_dica_personalizada(resumo: ResumoDesempenho) -> str:
+def gerar_dica_personalizada(resumo: ResumoDesempenho, *, derrota: bool = False) -> str:
     """Gera uma dica pedagógica direcionada a partir do tipo de erro mais comum."""
     if resumo.erro_mais_comum == "porta":
         return (
             "Dica Defensiva (Portas de Carros): Seu maior desafio foi o 'dooring'. "
-            "Ao pedalar na faixa direita, mantenha pelo menos 1 metro de distância dos carros estacionados. "
-            "Ao avistar o pisca-alerta ou a área hachurada na pista, mude preventivamente para a faixa central ou freie!"
+            "Mantenha distância dos carros estacionados à direita e, ao notar o pisca-alerta, "
+            "mude para a faixa central ou freie."
         )
     if resumo.erro_mais_comum == "ponto_cego":
         return (
-            "Dica Defensiva (Ponto Cego de Ônibus): Seu maior perigo foram os 'Angles Morts' de veículos pesados. "
-            "Lembre-se: se você não vê os retrovisores do motorista, ele não vê você! "
-            "Nunca permaneça na zona lateral demarcada quando o ônibus acionar a seta: freie imediatamente para ficar atrás ou ultrapasse com folga pela esquerda."
+            "Dica Defensiva (Ponto Cego de Ônibus): Atenção aos 'Angles Morts'. "
+            "Nunca emparelhe na zona lateral quando o ônibus der seta: freie para recuar "
+            "ou ultrapasse pela esquerda."
         )
     if resumo.colisoes_trafego > 0:
         return (
-            "Dica de Fluxo e Espaçamento: Cuidado com os veículos à frente na avenida. "
-            "Mantenha distância de seguimento e dose a aceleração com a tecla de freio (S / ↓) para antecipar paradas bruscas do trânsito."
+            "Dica de Fluxo e Espaçamento: Mantenha distância segura dos veículos à frente "
+            "e use o freio (S / ↓) ou o Dash (Espaço) para evitar colisões."
         )
     if resumo.reacoes_tardias > 0:
         return (
-            "Dica de Antecipação: Você conseguiu evitar colisões, mas agiu em cima da hora. "
-            "Ao notar os alertas visuais (pisca do carro, setas do ônibus ou brilho da borda da tela), "
-            "tome sua decisão imediatamente para não depender de reflexos de emergência."
+            "Dica de Antecipação: Você evitou colisões, mas reagiu em cima da hora. "
+            "Ao ver o pisca-alerta ou a seta do ônibus, aja imediatamente."
+        )
+    if derrota:
+        return (
+            "Uma colisão encerrou a tentativa. Observe os avisos visuais na pista "
+            "e reduza a velocidade nos trechos de tráfego mais intenso."
+        )
+    if resumo.total_perigos == 0:
+        return (
+            "Continue pedalando pela avenida para registrar sua leitura "
+            "de portas de carros e pontos cegos de ônibus."
         )
     return (
-        "Dica de Excelência: Pilotagem impecável! Você previu todos os perigos urbanos com maestria e tempo de resposta zero. "
-        "Continue aplicando essa postura defensiva preventiva na vida real pedalando sempre com atenção às zonas de risco."
+        "Dica de Excelência: Pilotagem impecável! Você antecipou todos os perigos urbanos "
+        "com folga e manteve o percurso seguro."
     )
+
+
+def _formatar_desempenho(desemp: DesempenhoSituacao) -> tuple[str, str]:
+    if desemp.falhas > 0:
+        return "Colisão", PERIGO
+    if desemp.antecipacoes > 0:
+        tempo = f" ({desemp.tempo_medio_resposta_s:.2f}s)" if desemp.tempo_medio_resposta_s is not None else ""
+        return f"Antecipação{tempo}", DESTAQUE
+    if desemp.reacoes_tardias > 0:
+        tempo = f" ({desemp.tempo_medio_resposta_s:.2f}s)" if desemp.tempo_medio_resposta_s is not None else ""
+        return f"Tardia{tempo}", AVISO
+    return "", TEXTO_SECUNDARIO
 
 
 def desenhar_boletim_pilotagem(
@@ -118,322 +155,219 @@ def desenhar_boletim_pilotagem(
     tempo_animacao_s: float = 0.0,
     mouse_pos: tuple[int, int] = (0, 0),
     em_pausa: bool = False,
+    derrota: bool = False,
 ) -> dict[str, pygame.Rect]:
-    """Renderiza a tela completa de Boletim de Pilotagem e retorna os botões clicáveis."""
+    """Renderiza o Boletim de Pilotagem com visual limpo e hierárquico, sem poluição."""
     tela.fill(FUNDO)
 
-    # Detalhes visuais de pista no fundo
-    pygame.draw.rect(tela, ASFALTO, (0, 0, 1280, 10))
-    pygame.draw.rect(tela, ASFALTO, (0, 710, 1280, 10))
+    fonte_titulo = pygame.font.SysFont("Bahnschrift", 34, bold=True)
+    fonte_subtitulo = pygame.font.SysFont("Bahnschrift", 22, bold=True)
+    fonte_secao = pygame.font.SysFont("Bahnschrift", 19, bold=True)
+    fonte_texto = pygame.font.SysFont("Bahnschrift", 18)
+    fonte_menor = pygame.font.SysFont("Bahnschrift", 15, bold=True)
+    fonte_tecla = pygame.font.SysFont("Consolas", 14, bold=True)
+    fonte_rank = pygame.font.SysFont("Bahnschrift", 66, bold=True)
+    fonte_numero = pygame.font.SysFont("Bahnschrift", 42, bold=True)
 
-    # Fontes do boletim
-    fonte_titulo = pygame.font.SysFont("Segoe UI", 36, bold=True)
-    fonte_subtitulo = pygame.font.SysFont("Segoe UI", 22, bold=True)
-    fonte_secao = pygame.font.SysFont("Segoe UI", 18, bold=True)
-    fonte_texto = pygame.font.SysFont("Segoe UI", 16)
-    fonte_menor = pygame.font.SysFont("Segoe UI", 14)
-    fonte_rank = pygame.font.SysFont("Segoe UI", 72, bold=True)
-    fonte_numero = pygame.font.SysFont("Segoe UI", 36, bold=True)
+    margem_x = 64
+    largura_total = 1280 - 2 * margem_x
+    x_fim = 1280 - margem_x
 
-    # 1. CABEÇALHO
-    cx = 640
-    titulo_texto = "CORRIDA PAUSADA · BOLETIM DE PILOTAGEM" if em_pausa else "BOLETIM DE PILOTAGEM DEFENSIVA"
-    titulo = fonte_titulo.render(titulo_texto, True, AVISO if em_pausa else DESTAQUE)
-    tela.blit(titulo, (cx - titulo.get_width() // 2, 22))
+    # 1. CABEÇALHO LIMPO
+    icone_jogo = pygame.transform.smoothscale(carregar_icone("icone_jogo"), (48, 48))
+    tela.blit(icone_jogo, (margem_x, 28))
 
-    nome_jogador = f"Ciclista: {jogador}" if jogador else "Ciclista Defensivo"
-    tempo_fmt = f"{tempo_percurso_s:.1f} s"
     if em_pausa:
-        info_cabecalho = f"Jogo Pausado · {nome_jogador} · Tempo Decorrido: {tempo_fmt} · Telemetria em Tempo Real"
+        titulo_texto = "CORRIDA PAUSADA"
+        cor_titulo = AVISO
+        status_cab = "Telemetria parcial"
+    elif derrota:
+        titulo_texto = "CORRIDA ENCERRADA"
+        cor_titulo = PERIGO
+        status_cab = "Colisão na via"
     else:
-        info_cabecalho = f"Percurso Urbano Concluído · {nome_jogador} · Tempo Total: {tempo_fmt}"
-    sub = fonte_menor.render(info_cabecalho, True, TEXTO_SECUNDARIO)
-    tela.blit(sub, (cx - sub.get_width() // 2, 66))
+        titulo_texto = "PERCURSO CONCLUÍDO"
+        cor_titulo = DESTAQUE
+        status_cab = "Chegada segura"
 
-    # 2. CÁLCULO DA PATENTE
-    patente = calcular_patente(resumo)
-
-    # 3. LINHA SUPERIOR: CARD DO RANK (ESQUERDA) E 4 MÉTRICAS (DIREITA)
-    y_linha1 = 96
-
-    # --- CARD DO RANK / PATENTE ---
-    card_rank = pygame.Rect(60, y_linha1, 350, 240)
-    pygame.draw.rect(tela, PAINEL, card_rank, border_radius=18)
-    pygame.draw.rect(tela, patente.cor, card_rank, width=2, border_radius=18)
-
-    # Letra do Rank em destaque com brilho
-    badge_rank = pygame.Rect(card_rank.x + 24, card_rank.y + 24, 90, 90)
-    pygame.draw.rect(tela, "#16221f", badge_rank, border_radius=14)
-    pygame.draw.rect(tela, patente.cor, badge_rank, width=2, border_radius=14)
-    letra_render = fonte_rank.render(patente.rank, True, patente.cor)
-    tela.blit(letra_render, (badge_rank.centerx - letra_render.get_width() // 2, badge_rank.centery - letra_render.get_height() // 2 - 2))
-
-    # Título da Patente e Pontuação
-    tela.blit(fonte_secao.render("Classificação Geral", True, TEXTO_SECUNDARIO), (card_rank.x + 126, card_rank.y + 24))
-    nome_patente = fonte_secao.render(patente.titulo, True, patente.cor)
-    if nome_patente.get_width() > card_rank.width - 138:
-        nome_patente = pygame.transform.smoothscale(nome_patente, (card_rank.width - 138, 18))
-    tela.blit(nome_patente, (card_rank.x + 126, card_rank.y + 50))
-
-    score_txt = f"Nota: {patente.pontuacao} / 100"
-    score_render = fonte_subtitulo.render(score_txt, True, TEXTO_PRINCIPAL)
-    tela.blit(score_render, (card_rank.x + 126, card_rank.y + 78))
-
-    pygame.draw.line(tela, BORDA_PISTA, (card_rank.x + 20, card_rank.y + 128), (card_rank.right - 20, card_rank.y + 128), 1)
-
-    # Descrição da patente
-    desc_render = fonte_texto.render(patente.descricao, True, TEXTO_SECUNDARIO)
-    if desc_render.get_width() > card_rank.width - 40:
-        desc_render = pygame.transform.smoothscale(desc_render, (card_rank.width - 40, 16))
-    tela.blit(desc_render, (card_rank.x + 20, card_rank.y + 142))
-
-    # Barra visual de índice de antecipação
-    rotulo_barra = fonte_menor.render(f"Índice de Antecipação: {patente.taxa_antecipacao * 100:.0f}%", True, TEXTO_PRINCIPAL)
-    tela.blit(rotulo_barra, (card_rank.x + 20, card_rank.y + 176))
-    pygame.draw.rect(tela, BORDA_PISTA, (card_rank.x + 20, card_rank.y + 202, card_rank.width - 40, 10), border_radius=5)
-    larg_progresso = round((card_rank.width - 40) * patente.taxa_antecipacao)
-    if larg_progresso > 0:
-        pygame.draw.rect(tela, patente.cor, (card_rank.x + 20, card_rank.y + 202, larg_progresso, 10), border_radius=5)
-
-    # --- 4 CARDS DE TELEMETRIA ---
-    x_metricas = 430
-    larg_col_metrica = 190
-    espaco_col = 16
-    altura_metrica = 240
-
-    metricas_cards = (
-        ("Antecipações", str(resumo.antecipacoes), DESTAQUE, "Resolvidos no aviso", "Decisões seguras e preventivas"),
-        ("Reações Tardias", str(resumo.reacoes_tardias), AVISO, "Resolvidos no susto", "Ações evasivas de última hora"),
-        ("Falhas / Colisões", str(resumo.falhas + resumo.colisoes_trafego), PERIGO, "Incidentes na via", "Batidas em portas ou tráfego"),
-        (
-            "Tempo de Resposta",
-            f"{resumo.tempo_medio_resposta_s:.2f} s" if resumo.tempo_medio_resposta_s is not None else "0.00 s",
-            AZUL_CIANO,
-            "Média até a saída",
-            "Tempo médio de reação",
-        ),
-    )
-
-    for idx, (titulo_m, valor_m, cor_m, sub1, sub2) in enumerate(metricas_cards):
-        xm = x_metricas + idx * (larg_col_metrica + espaco_col)
-        card_m = pygame.Rect(xm, y_linha1, larg_col_metrica, altura_metrica)
-        pygame.draw.rect(tela, PAINEL, card_m, border_radius=18)
-        pygame.draw.rect(tela, "#283b35", card_m, width=2, border_radius=18)
-
-        # Barra colorida superior
-        pygame.draw.rect(tela, cor_m, (card_m.x + 18, card_m.y + 14, 28, 4), border_radius=2)
-
-        # Título da métrica
-        tm = fonte_menor.render(titulo_m, True, TEXTO_SECUNDARIO)
-        tela.blit(tm, (card_m.x + 18, card_m.y + 28))
-
-        # Valor numérico em tamanho grande
-        vm = fonte_numero.render(valor_m, True, cor_m)
-        tela.blit(vm, (card_m.x + 18, card_m.y + 60))
-
-        pygame.draw.line(tela, "#263531", (card_m.x + 16, card_m.y + 120), (card_m.right - 16, card_m.y + 120), 1)
-
-        # Legendas explicativas
-        s1 = fonte_menor.render(sub1, True, TEXTO_PRINCIPAL)
-        tela.blit(s1, (card_m.x + 16, card_m.y + 138))
-
-        s2 = fonte_menor.render(sub2, True, TEXTO_SECUNDARIO)
-        if s2.get_width() > card_m.width - 32:
-            s2 = pygame.transform.smoothscale(s2, (card_m.width - 32, 13))
-        tela.blit(s2, (card_m.x + 16, card_m.y + 164))
-
-    # 4. LINHA INFERIOR: COMPARATIVO INÍCIO VS. FIM (ESQUERDA) E DICA PERSONALIZADA (DIREITA)
-    y_linha2 = 356
-
-    # --- CARD COMPARATIVO DE EVOLUÇÃO ---
-    card_comp = pygame.Rect(60, y_linha2, 570, 240)
-    pygame.draw.rect(tela, PAINEL, card_comp, border_radius=18)
-    pygame.draw.rect(tela, "#283b35", card_comp, width=2, border_radius=18)
-
-    tela.blit(fonte_secao.render("Evolução: Início vs. Fim da Fase", True, TEXTO_PRINCIPAL), (card_comp.x + 22, card_comp.y + 16))
+    nome_jogador = jogador if jogador else "Ciclista"
+    tela.blit(fonte_titulo.render(titulo_texto, True, cor_titulo), (margem_x + 64, 24))
     tela.blit(
-        fonte_menor.render("Compara situações idênticas no Trecho 1 (Manhã) e Trecho 3 (Rush):", True, TEXTO_SECUNDARIO),
-        (card_comp.x + 22, card_comp.y + 42),
+        fonte_texto.render(f"{status_cab}  ·  {nome_jogador}  ·  {tempo_percurso_s:.1f} s", True, TEXTO_SECUNDARIO),
+        (margem_x + 64, 62),
     )
-    pygame.draw.line(tela, BORDA_PISTA, (card_comp.x + 22, card_comp.y + 66), (card_comp.right - 22, card_comp.y + 66), 1)
 
-    # Extrai as comparações de porta e ponto cego
-    comp_porta = next((c for c in comparacoes if c.tipo == "porta"), None)
-    comp_ponto_cego = next((c for c in comparacoes if c.tipo == "ponto_cego"), None)
+    pygame.draw.line(tela, BORDA_PISTA, (margem_x, 98), (x_fim, 98), 1)
 
-    def formatar_desempenho(desemp: DesempenhoSituacao) -> tuple[str, str]:
-        if desemp.falhas > 0:
-            return "Falha (Colisão)", PERIGO
-        if desemp.antecipacoes > 0:
-            tempo = f" ({desemp.tempo_medio_resposta_s:.2f} s)" if desemp.tempo_medio_resposta_s is not None else ""
-            return f"Antecipação{tempo}", DESTAQUE
-        if desemp.reacoes_tardias > 0:
-            tempo = f" ({desemp.tempo_medio_resposta_s:.2f} s)" if desemp.tempo_medio_resposta_s is not None else ""
-            return f"Reação Tardia{tempo}", AVISO
-        return "Sem dados", TEXTO_SECUNDARIO
+    # 2. FAIXA PRINCIPAL: RANK + 4 MÉTRICAS EM UM ÚNICO BLOCO LIMPO
+    patente = calcular_patente(resumo, derrota=derrota)
+    y_hero = 120
+    alt_hero = 186
 
-    def formatar_tendencia(tend: str) -> tuple[str, str]:
-        if tend == "melhorou":
-            return "Melhorou ▲", DESTAQUE
-        if tend == "piorou":
-            return "Piorou ▼", PERIGO
-        if tend == "igual":
-            return "Constante ▬", TEXTO_PRINCIPAL
-        return "Sem dados", TEXTO_SECUNDARIO
+    bloco_hero = pygame.Rect(margem_x, y_hero, largura_total, alt_hero)
+    pygame.draw.rect(tela, PAINEL, bloco_hero, border_radius=4)
+    pygame.draw.rect(tela, BORDA_PISTA, bloco_hero, width=1, border_radius=4)
+    pygame.draw.rect(tela, patente.cor, (bloco_hero.x, bloco_hero.y, bloco_hero.width, 3))
 
-    # Linha Perigo de Porta
-    y_cp = card_comp.y + 80
-    tela.blit(carregar_icone("icone_porta"), (card_comp.x + 20, y_cp))
-    tela.blit(fonte_secao.render("Porta de Carro Estacionado", True, TEXTO_PRINCIPAL), (card_comp.x + 76, y_cp + 2))
+    # Lado esquerdo do hero: Rank + Nota + Barra de Antecipação
+    badge_rank = pygame.Rect(bloco_hero.x + 28, bloco_hero.y + 28, 92, 92)
+    pygame.draw.rect(tela, ASFALTO, badge_rank, border_radius=4)
+    pygame.draw.rect(tela, patente.cor, badge_rank, width=2, border_radius=4)
+    letra_render = fonte_rank.render(patente.rank, True, patente.cor)
+    tela.blit(
+        letra_render,
+        (badge_rank.centerx - letra_render.get_width() // 2, badge_rank.centery - letra_render.get_height() // 2 + 2),
+    )
 
-    if comp_porta is not None:
-        txt_ini, cor_ini = formatar_desempenho(comp_porta.inicio)
-        txt_fim, cor_fim = formatar_desempenho(comp_porta.fim)
-        txt_tend, cor_tend = formatar_tendencia(comp_porta.tendencia)
+    x_info = badge_rank.right + 22
+    tela.blit(fonte_subtitulo.render(f"Nota {patente.pontuacao} / 100", True, TEXTO_PRINCIPAL), (x_info, bloco_hero.y + 30))
+    tela.blit(fonte_secao.render(patente.titulo, True, patente.cor), (x_info, bloco_hero.y + 60))
+    for i_d, linha_d in enumerate(_quebrar_texto(fonte_texto, patente.descricao, 330)[:2]):
+        tela.blit(fonte_texto.render(linha_d, True, TEXTO_SECUNDARIO), (x_info, bloco_hero.y + 88 + i_d * 20))
 
-        tela.blit(fonte_menor.render(f"Início (Trecho 1): {txt_ini}", True, cor_ini), (card_comp.x + 76, y_cp + 24))
-        tela.blit(fonte_menor.render(f"Fim (Trecho 3): {txt_fim}", True, cor_fim), (card_comp.x + 76, y_cp + 42))
+    # Barra fina de antecipação no rodapé esquerdo do bloco
+    tela.blit(
+        fonte_menor.render(f"Antecipação: {patente.taxa_antecipacao * 100:.0f}%", True, TEXTO_SECUNDARIO),
+        (bloco_hero.x + 28, bloco_hero.bottom - 42),
+    )
+    barra_x = bloco_hero.x + 170
+    barra_w = 290
+    pygame.draw.rect(tela, ASFALTO, (barra_x, bloco_hero.bottom - 35, barra_w, 6), border_radius=2)
+    larg_prog = round(barra_w * patente.taxa_antecipacao)
+    if larg_prog > 0:
+        pygame.draw.rect(tela, patente.cor, (barra_x, bloco_hero.bottom - 35, larg_prog, 6), border_radius=2)
 
-        # Badge de tendência
-        badge_tend = pygame.Rect(card_comp.right - 145, y_cp + 12, 125, 28)
-        pygame.draw.rect(tela, "#16221f", badge_tend, border_radius=6)
-        pygame.draw.rect(tela, cor_tend, badge_tend, width=1, border_radius=6)
-        lbl_tend = fonte_menor.render(txt_tend, True, cor_tend)
-        tela.blit(lbl_tend, (badge_tend.centerx - lbl_tend.get_width() // 2, badge_tend.centery - lbl_tend.get_height() // 2))
+    # Divisória vertical interna
+    x_div_hero = bloco_hero.x + 492
+    pygame.draw.line(tela, BORDA_PISTA, (x_div_hero, bloco_hero.y + 24), (x_div_hero, bloco_hero.bottom - 24), 1)
 
-    pygame.draw.line(tela, "#263531", (card_comp.x + 22, card_comp.y + 152), (card_comp.right - 22, card_comp.y + 152), 1)
+    # Lado direito do hero: 4 números limpos sem sub-caixas redundantes
+    tempo_resp = f"{resumo.tempo_medio_resposta_s:.2f} s" if resumo.tempo_medio_resposta_s is not None else "—"
+    metricas = (
+        ("ANTECIPAÇÕES", str(resumo.antecipacoes), DESTAQUE),
+        ("TARDIAS", str(resumo.reacoes_tardias), AVISO),
+        ("COLISÕES", str(resumo.falhas + resumo.colisoes_trafego), PERIGO),
+        ("TEMPO MÉDIO", tempo_resp, TEXTO_PRINCIPAL),
+    )
+    larg_m = (bloco_hero.right - x_div_hero - 36) // 4
+    for idx, (rotulo_m, valor_m, cor_m) in enumerate(metricas):
+        xm = x_div_hero + 28 + idx * larg_m
+        tela.blit(fonte_menor.render(rotulo_m, True, TEXTO_SECUNDARIO), (xm, bloco_hero.y + 42))
+        tela.blit(fonte_numero.render(valor_m, True, cor_m), (xm, bloco_hero.y + 74))
 
-    # Linha Ponto Cego de Ônibus
-    y_pc = card_comp.y + 164
-    tela.blit(carregar_icone("icone_ponto_cego"), (card_comp.x + 20, y_pc))
-    tela.blit(fonte_secao.render("Ponto Cego do Ônibus (Angles Morts)", True, TEXTO_PRINCIPAL), (card_comp.x + 76, y_pc + 2))
+    # 3. ÁREA INFERIOR: 2 COLUNAS LIMPAS (SEM CAIXA DENTRO DE CAIXA E SEM "SEM DADOS")
+    y_inf = y_hero + alt_hero + 26
+    alt_inf = 270
+    larg_col = (largura_total - 28) // 2
 
-    if comp_ponto_cego is not None:
-        txt_ini_pc, cor_ini_pc = formatar_desempenho(comp_ponto_cego.inicio)
-        txt_fim_pc, cor_fim_pc = formatar_desempenho(comp_ponto_cego.fim)
-        txt_tend_pc, cor_tend_pc = formatar_tendencia(comp_ponto_cego.tendencia)
+    # --- COLUNA ESQUERDA: DIAGNÓSTICO ---
+    col_diag = pygame.Rect(margem_x, y_inf, larg_col, alt_inf)
+    pygame.draw.rect(tela, PAINEL, col_diag, border_radius=4)
+    pygame.draw.rect(tela, BORDA_PISTA, col_diag, width=1, border_radius=4)
+    pygame.draw.rect(tela, cor_titulo, (col_diag.x, col_diag.y, 4, col_diag.height))
 
-        tela.blit(fonte_menor.render(f"Início (Trecho 1): {txt_ini_pc}", True, cor_ini_pc), (card_comp.x + 76, y_pc + 24))
-        tela.blit(fonte_menor.render(f"Fim (Trecho 3): {txt_fim_pc}", True, cor_fim_pc), (card_comp.x + 76, y_pc + 42))
+    tela.blit(fonte_secao.render("Diagnóstico da corrida", True, TEXTO_PRINCIPAL), (col_diag.x + 26, col_diag.y + 24))
+    pygame.draw.line(tela, BORDA_PISTA, (col_diag.x + 26, col_diag.y + 56), (col_diag.right - 26, col_diag.y + 56), 1)
 
-        badge_tend_pc = pygame.Rect(card_comp.right - 145, y_pc + 12, 125, 28)
-        pygame.draw.rect(tela, "#16221f", badge_tend_pc, border_radius=6)
-        pygame.draw.rect(tela, cor_tend_pc, badge_tend_pc, width=1, border_radius=6)
-        lbl_tend_pc = fonte_menor.render(txt_tend_pc, True, cor_tend_pc)
-        tela.blit(lbl_tend_pc, (badge_tend_pc.centerx - lbl_tend_pc.get_width() // 2, badge_tend_pc.centery - lbl_tend_pc.get_height() // 2))
+    dica_texto = gerar_dica_personalizada(resumo, derrota=derrota)
+    y_d = col_diag.y + 76
+    for linha in _quebrar_texto(fonte_texto, dica_texto, col_diag.width - 52)[:6]:
+        tela.blit(fonte_texto.render(linha, True, TEXTO_SECUNDARIO), (col_diag.x + 26, y_d))
+        y_d += 28
 
-    # --- CARD DICA PERSONALIZADA ---
-    card_dica = pygame.Rect(650, y_linha2, 570, 240)
-    pygame.draw.rect(tela, PAINEL, card_dica, border_radius=18)
-    pygame.draw.rect(tela, "#283b35", card_dica, width=2, border_radius=18)
+    # --- COLUNA DIREITA: EVOLUÇÃO (SÓ MOSTRA O QUE EXISTE, ZERO "SEM DADOS") ---
+    col_comp = pygame.Rect(col_diag.right + 28, y_inf, larg_col, alt_inf)
+    pygame.draw.rect(tela, PAINEL, col_comp, border_radius=4)
+    pygame.draw.rect(tela, BORDA_PISTA, col_comp, width=1, border_radius=4)
 
-    tela.blit(fonte_secao.render("Diagnóstico Pedagógico Personalizado", True, TEXTO_PRINCIPAL), (card_dica.x + 22, card_dica.y + 16))
-    tela.blit(fonte_menor.render("Feedback gerado com base no seu padrão de erros nesta partida:", True, TEXTO_SECUNDARIO), (card_dica.x + 22, card_dica.y + 42))
-    pygame.draw.line(tela, BORDA_PISTA, (card_dica.x + 22, card_dica.y + 66), (card_dica.right - 22, card_dica.y + 66), 1)
+    tela.blit(fonte_secao.render("Leitura por tipo de perigo", True, TEXTO_PRINCIPAL), (col_comp.x + 24, col_comp.y + 24))
+    pygame.draw.line(tela, BORDA_PISTA, (col_comp.x + 24, col_comp.y + 56), (col_comp.right - 24, col_comp.y + 56), 1)
 
-    # Texto da dica formatado em bloco acolchoado
-    dica_texto = gerar_dica_personalizada(resumo)
-    caixa_dica = pygame.Rect(card_dica.x + 20, card_dica.y + 80, card_dica.width - 40, 140)
-    pygame.draw.rect(tela, "#152420", caixa_dica, border_radius=12)
-    pygame.draw.rect(tela, "#2a3d36", caixa_dica, width=1, border_radius=12)
+    itens_validos: list[tuple[str, str, Comparacao]] = []
+    for tipo_p, icone_n, nome_p in (
+        ("porta", "icone_porta", "Porta de carro"),
+        ("ponto_cego", "icone_ponto_cego", "Ponto cego de ônibus"),
+    ):
+        comp = next((c for c in comparacoes if c.tipo == tipo_p), None)
+        if comp is not None and (_formatar_desempenho(comp.inicio)[0] or _formatar_desempenho(comp.fim)[0]):
+            itens_validos.append((icone_n, nome_p, comp))
 
-    # Quebra de linhas suave para a dica
-    palavras = dica_texto.split(" ")
-    linhas_dica: list[str] = []
-    linha_atual = ""
-    for palavra in palavras:
-        teste = f"{linha_atual} {palavra}".strip()
-        if fonte_texto.size(teste)[0] < caixa_dica.width - 32:
-            linha_atual = teste
-        else:
-            linhas_dica.append(linha_atual)
-            linha_atual = palavra
-    if linha_atual:
-        linhas_dica.append(linha_atual)
+    if itens_validos:
+        y_c = col_comp.y + 74
+        for idx_c, (icone_n, nome_p, comp) in enumerate(itens_validos):
+            tela.blit(carregar_icone(icone_n), (col_comp.x + 24, y_c + 4))
+            tela.blit(fonte_secao.render(nome_p, True, TEXTO_PRINCIPAL), (col_comp.x + 84, y_c))
 
-    y_d = caixa_dica.y + 16
-    for l_txt in linhas_dica[:5]:
-        tela.blit(fonte_texto.render(l_txt, True, TEXTO_PRINCIPAL), (caixa_dica.x + 16, y_d))
-        y_d += 24
+            txt_ini, cor_ini = _formatar_desempenho(comp.inicio)
+            txt_fim, cor_fim = _formatar_desempenho(comp.fim)
 
-    # 5. BOTÕES DE AÇÃO NO RODAPÉ
+            if txt_ini and txt_fim:
+                tela.blit(fonte_texto.render(f"Início: {txt_ini}", True, cor_ini), (col_comp.x + 84, y_c + 26))
+                tela.blit(fonte_texto.render(f"Fim: {txt_fim}", True, cor_fim), (col_comp.x + 84, y_c + 48))
+            elif txt_ini:
+                tela.blit(fonte_texto.render(f"Trecho inicial: {txt_ini}", True, cor_ini), (col_comp.x + 84, y_c + 30))
+            elif txt_fim:
+                tela.blit(fonte_texto.render(f"Trecho final: {txt_fim}", True, cor_fim), (col_comp.x + 84, y_c + 30))
+
+            if comp.tendencia in ("melhorou", "piorou", "igual"):
+                mapa_tend = {
+                    "melhorou": ("Melhorou", DESTAQUE),
+                    "piorou": ("Piorou", PERIGO),
+                    "igual": ("Constante", TEXTO_PRINCIPAL),
+                }
+                txt_t, cor_t = mapa_tend[comp.tendencia]
+                badge_t = pygame.Rect(col_comp.right - 128, y_c + 14, 104, 28)
+                pygame.draw.rect(tela, ASFALTO, badge_t, border_radius=3)
+                pygame.draw.rect(tela, cor_t, badge_t, width=1, border_radius=3)
+                lbl_t = fonte_menor.render(txt_t, True, cor_t)
+                tela.blit(lbl_t, (badge_t.centerx - lbl_t.get_width() // 2, badge_t.centery - lbl_t.get_height() // 2))
+
+            if idx_c == 0 and len(itens_validos) > 1:
+                pygame.draw.line(tela, BORDA_PISTA, (col_comp.x + 24, y_c + 82), (col_comp.right - 24, y_c + 82), 1)
+            y_c += 96
+    else:
+        msg_comp = (
+            "Avance pelos trechos da avenida para comparar sua leitura "
+            "entre o início (Manhã) e o fim do percurso (Hora do rush)."
+        )
+        y_msg = col_comp.y + 84
+        for linha in _quebrar_texto(fonte_texto, msg_comp, col_comp.width - 48):
+            tela.blit(fonte_texto.render(linha, True, TEXTO_SECUNDARIO), (col_comp.x + 24, y_msg))
+            y_msg += 26
+
+    # 4. RODAPÉ E BOTÕES
+    y_rodape = 634
+    pygame.draw.line(tela, BORDA_PISTA, (margem_x, y_rodape), (x_fim, y_rodape), 1)
+
     botoes: dict[str, pygame.Rect] = {}
-    altura_btn = 52
-    y_btn = 620
+    y_btn = y_rodape + 16
+    alt_btn = 46
+
+    def desenhar_btn(chave: str, rect: pygame.Rect, rotulo: str, atalho: str, cor_borda: str, destaque: bool = False) -> None:
+        hover = rect.collidepoint(mouse_pos)
+        if destaque:
+            fundo_b = DESTAQUE
+            cor_txt = FUNDO
+            cor_sub = ASFALTO
+        else:
+            fundo_b = ASFALTO if hover else PAINEL
+            cor_txt = cor_borda if hover else TEXTO_PRINCIPAL
+            cor_sub = TEXTO_SECUNDARIO
+        pygame.draw.rect(tela, fundo_b, rect, border_radius=4)
+        pygame.draw.rect(tela, cor_borda if (hover or destaque) else BORDA_PISTA, rect, width=1, border_radius=4)
+
+        lbl = fonte_menor.render(rotulo, True, cor_txt)
+        sub = fonte_tecla.render(atalho, True, cor_sub)
+        tela.blit(lbl, (rect.x + 18, rect.centery - lbl.get_height() // 2))
+        tela.blit(sub, (rect.right - sub.get_width() - 16, rect.centery - sub.get_height() // 2))
+        botoes[chave] = rect
 
     if em_pausa:
-        # Quando pausado durante a corrida: 3 botões (CONTINUAR, RECOMEÇAR, SAIR)
-        larg_btn_pausa = 260
-        gap = 20
-        larg_total = 3 * larg_btn_pausa + 2 * gap
-        x_inicio = cx - larg_total // 2
-
-        # 1. Botão Continuar Corrida
-        rect_cont = pygame.Rect(x_inicio, y_btn, larg_btn_pausa, altura_btn)
-        hover_cont = rect_cont.collidepoint(mouse_pos)
-        cor_fundo_cont = "#2a423a" if hover_cont else "#1f332c"
-        pygame.draw.rect(tela, cor_fundo_cont, rect_cont, border_radius=14)
-        pygame.draw.rect(tela, DESTAQUE if hover_cont else "#3d574d", rect_cont, width=2, border_radius=14)
-
-        txt_cont = fonte_subtitulo.render("CONTINUAR", True, DESTAQUE if hover_cont else TEXTO_PRINCIPAL)
-        sub_cont = fonte_menor.render("[ESPAÇO] ou [B] / [P]", True, TEXTO_SECUNDARIO)
-        tela.blit(txt_cont, (rect_cont.centerx - txt_cont.get_width() // 2, rect_cont.y + 8))
-        tela.blit(sub_cont, (rect_cont.centerx - sub_cont.get_width() // 2, rect_cont.y + 30))
-        botoes["continuar"] = rect_cont
-
-        # 2. Botão Recomeçar
-        rect_rec = pygame.Rect(x_inicio + larg_btn_pausa + gap, y_btn, larg_btn_pausa, altura_btn)
-        hover_rec = rect_rec.collidepoint(mouse_pos)
-        cor_fundo_rec = "#383c27" if hover_rec else "#272a1d"
-        pygame.draw.rect(tela, cor_fundo_rec, rect_rec, border_radius=14)
-        pygame.draw.rect(tela, AVISO if hover_rec else "#4e5436", rect_rec, width=2, border_radius=14)
-
-        txt_rec = fonte_subtitulo.render("RECOMEÇAR", True, AVISO if hover_rec else TEXTO_PRINCIPAL)
-        sub_rec = fonte_menor.render("[R]", True, TEXTO_SECUNDARIO)
-        tela.blit(txt_rec, (rect_rec.centerx - txt_rec.get_width() // 2, rect_rec.y + 8))
-        tela.blit(sub_rec, (rect_rec.centerx - sub_rec.get_width() // 2, rect_rec.y + 30))
-        botoes["recomecar"] = rect_rec
-
-        # 3. Botão Sair
-        rect_sair = pygame.Rect(x_inicio + 2 * (larg_btn_pausa + gap), y_btn, larg_btn_pausa, altura_btn)
-        hover_sair = rect_sair.collidepoint(mouse_pos)
-        cor_fundo_sair = "#3d2222" if hover_sair else "#261919"
-        pygame.draw.rect(tela, cor_fundo_sair, rect_sair, border_radius=14)
-        pygame.draw.rect(tela, PERIGO if hover_sair else "#573535", rect_sair, width=2, border_radius=14)
-
-        txt_sair = fonte_subtitulo.render("SAIR DO JOGO", True, PERIGO if hover_sair else TEXTO_PRINCIPAL)
-        sub_sair = fonte_menor.render("[Q] ou [ESC]", True, TEXTO_SECUNDARIO)
-        tela.blit(txt_sair, (rect_sair.centerx - txt_sair.get_width() // 2, rect_sair.y + 8))
-        tela.blit(sub_sair, (rect_sair.centerx - sub_sair.get_width() // 2, rect_sair.y + 30))
-        botoes["sair"] = rect_sair
+        desenhar_btn("sair", pygame.Rect(margem_x, y_btn, 220, alt_btn), "SAIR", "Q / ESC", PERIGO)
+        desenhar_btn("recomecar", pygame.Rect(margem_x + 236, y_btn, 240, alt_btn), "RECOMEÇAR", "R", AVISO)
+        desenhar_btn("continuar", pygame.Rect(x_fim - 320, y_btn, 320, alt_btn), "CONTINUAR", "ESPAÇO / B", DESTAQUE, destaque=True)
     else:
-        # Quando concluído (fim de percurso): 2 botões (JOGAR NOVAMENTE e SAIR)
-        larg_btn = 320
-
-        # Botão Jogar Novamente
-        rect_jogar = pygame.Rect(cx - larg_btn - 20, y_btn, larg_btn, altura_btn)
-        hover_jogar = rect_jogar.collidepoint(mouse_pos)
-        cor_fundo_jogar = "#2a423a" if hover_jogar else "#1f332c"
-        pygame.draw.rect(tela, cor_fundo_jogar, rect_jogar, border_radius=14)
-        pygame.draw.rect(tela, DESTAQUE if hover_jogar else "#3d574d", rect_jogar, width=2, border_radius=14)
-
-        txt_jogar = fonte_subtitulo.render("JOGAR NOVAMENTE", True, DESTAQUE if hover_jogar else TEXTO_PRINCIPAL)
-        sub_jogar = fonte_menor.render("[R] ou [ENTER]", True, TEXTO_SECUNDARIO)
-        tela.blit(txt_jogar, (rect_jogar.centerx - txt_jogar.get_width() // 2, rect_jogar.y + 8))
-        tela.blit(sub_jogar, (rect_jogar.centerx - sub_jogar.get_width() // 2, rect_jogar.y + 30))
-        botoes["jogar_novamente"] = rect_jogar
-
-        # Botão Sair
-        rect_sair = pygame.Rect(cx + 20, y_btn, larg_btn, altura_btn)
-        hover_sair = rect_sair.collidepoint(mouse_pos)
-        cor_fundo_sair = "#3d2222" if hover_sair else "#261919"
-        pygame.draw.rect(tela, cor_fundo_sair, rect_sair, border_radius=14)
-        pygame.draw.rect(tela, PERIGO if hover_sair else "#573535", rect_sair, width=2, border_radius=14)
-
-        txt_sair = fonte_subtitulo.render("SAIR DO JOGO", True, PERIGO if hover_sair else TEXTO_PRINCIPAL)
-        sub_sair = fonte_menor.render("[ESC]", True, TEXTO_SECUNDARIO)
-        tela.blit(txt_sair, (rect_sair.centerx - txt_sair.get_width() // 2, rect_sair.y + 8))
-        tela.blit(sub_sair, (rect_sair.centerx - sub_sair.get_width() // 2, rect_sair.y + 30))
-        botoes["sair"] = rect_sair
+        desenhar_btn("sair", pygame.Rect(margem_x, y_btn, 220, alt_btn), "SAIR", "ESC", PERIGO)
+        desenhar_btn("jogar_novamente", pygame.Rect(x_fim - 340, y_btn, 340, alt_btn), "JOGAR NOVAMENTE", "R / ENTER", DESTAQUE, destaque=True)
 
     return botoes

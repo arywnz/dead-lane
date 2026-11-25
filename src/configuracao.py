@@ -13,10 +13,15 @@ CICLISTA_MIN_X = CENTRO_PISTA_X - LARGURA_PISTA / 2 + MARGEM_BORDA_PISTA + MEIA_
 CICLISTA_MAX_X = CENTRO_PISTA_X + LARGURA_PISTA / 2 - MARGEM_BORDA_PISTA - MEIA_LARGURA_CICLISTA
 
 VELOCIDADE_INICIAL_MPS = 8.0
-VELOCIDADE_MAXIMA_MPS = 12.0
-ACELERACAO_MPS2 = 3.0
+VELOCIDADE_MAXIMA_MPS = 16.0
+ACELERACAO_MPS2 = 4.0
 FRENAGEM_MPS2 = 6.0
 VELOCIDADE_LATERAL_PXPS = 270.0
+DASH_DURACAO_S = 0.20
+DASH_RECARGA_S = 3.5
+DASH_BONUS_ESCAPADA_S = 2.2
+DASH_VELOCIDADE_LATERAL_PXPS = 680.0
+DASH_VELOCIDADE_AVANCO_MPS = 18.0
 ESCALA_PISTA_PX_POR_M = 30.0
 
 LARGURA_COLISAO_CICLISTA = 24
@@ -64,7 +69,7 @@ DISTANCIA_AVISO_PONTO_CEGO_M = 9.5
 DURACAO_AVISO_PONTO_CEGO_S = 2.8
 DURACAO_PONTO_CEGO_ATIVO_S = 1.5
 LARGURA_PONTO_CEGO = 175.0
-DESLOCAMENTO_FECHAMENTO_ONIBUS_PX = 26.0
+DESLOCAMENTO_FECHAMENTO_ONIBUS_PX = 108.0
 
 # Métricas: o risco resolvido até este tempo após o aviso conta como antecipação; depois, como reação tardia.
 LIMITE_ANTECIPACAO_PORTA_S = DURACAO_AVISO_PORTA_S
@@ -84,8 +89,8 @@ CONFIG_TRECHOS = (
     {
         "nome": NOMES_TRECHOS[0],
         "rotulo_densidade": "Tráfego leve",
-        "intervalo_trafego_m": 135.0,
-        "max_veiculos_ambiente": 2,
+        "intervalo_trafego_m": 58.0,
+        "max_veiculos_ambiente": 5,
         "perigos": (
             ("porta", 95.0),
             ("ponto_cego", 260.0),
@@ -96,8 +101,8 @@ CONFIG_TRECHOS = (
     {
         "nome": NOMES_TRECHOS[1],
         "rotulo_densidade": "Tráfego moderado",
-        "intervalo_trafego_m": 90.0,
-        "max_veiculos_ambiente": 3,
+        "intervalo_trafego_m": 44.0,
+        "max_veiculos_ambiente": 7,
         "perigos": (
             ("porta", 830.0),
             ("ponto_cego", 945.0),
@@ -110,8 +115,8 @@ CONFIG_TRECHOS = (
     {
         "nome": NOMES_TRECHOS[2],
         "rotulo_densidade": "Tráfego intenso",
-        "intervalo_trafego_m": 62.0,
-        "max_veiculos_ambiente": 5,
+        "intervalo_trafego_m": 34.0,
+        "max_veiculos_ambiente": 9,
         "perigos": (
             ("porta", 1575.0),
             ("ponto_cego", 1660.0),

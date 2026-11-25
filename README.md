@@ -30,6 +30,7 @@ O objetivo do jogador é percorrer com segurança uma avenida movimentada de 2.2
 | **W / ↑** | Acelerar | Pedala para frente, aumentando a velocidade até o limite máximo. |
 | **S / ↓** | Frear (Defensivo) | Reduz a velocidade; fundamental para sair do ponto cego e recuar. |
 | **A / ←** e **D / →** | Mudar de Posição | Desloca o ciclista lateralmente entre as faixas da pista. |
+| **Espaço** | Dash | Desvio lateral rápido (com A/D) ou impulso para frente (sem direção lateral). |
 | **B / P / Esc** | Pausa / Boletim | Congela o jogo e abre o Boletim de Pilotagem com telemetria parcial. |
 | **H / I** | Instruções | Abre a tela de instruções e reconhecimento de perigos. |
 | **R** | Reiniciar | Reinicia a tentativa imediatamente a partir do marco zero. |
@@ -53,6 +54,9 @@ py -3.14 -m venv .venv
 
 # 3. Execução do jogo
 .\.venv\Scripts\python.exe jogo.py
+
+# Ou sem janela de terminal (Windows):
+.\.venv\Scripts\pythonw.exe jogo.py
 ```
 
 ### Configuração no Linux / macOS
@@ -70,41 +74,6 @@ python jogo.py
 Exemplo:
 ```powershell
 .\.venv\Scripts\python.exe jogo.py --jogador "Ciclista 1"
-```
-
----
-
-## Empacotamento para Windows (Standalone `.exe`)
-
-O projeto já conta com o arquivo de especificação [`build_windows.spec`](build_windows.spec) e um script automatizado [`build_windows.bat`](build_windows.bat), configurados para empacotar o jogo em um único arquivo executável autossuficiente (`DeadLane.exe`), sem abrir terminal (`--windowed`) e incluindo a pasta `assets/` compatível com `sys._MEIPASS`.
-
-### Método 1: Compilação Automática via `.bat` (Recomendado)
-Basta dar um duplo-clique no arquivo **`build_windows.bat`** (ou executá-lo pelo terminal):
-
-```cmd
-build_windows.bat
-```
-
-O script cuidará de:
-1. Verificar e configurar o ambiente virtual `.venv`.
-2. Instalar as dependências e o PyInstaller.
-3. Gerar e validar os assets PNG em `assets/`.
-4. Compilar o executável final em `dist\DeadLane.exe`.
-
-### Método 2: Compilação Manual via Terminal
-Se preferir rodar passo a passo:
-
-```powershell
-# 1. Instale o PyInstaller no ambiente virtual
-.\.venv\Scripts\python.exe -m pip install pyinstaller
-
-# 2. Execute a compilação a partir da especificação
-.\.venv\Scripts\pyinstaller.exe --clean build_windows.spec
-```
-
-Ao término, o executável estará pronto na pasta `dist\`:
-```powershell
-.\dist\DeadLane.exe
 ```
 
 ---

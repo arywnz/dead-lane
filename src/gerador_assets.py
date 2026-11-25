@@ -432,7 +432,66 @@ def gerar_icones_aviso() -> dict[str, pygame.Surface]:
         )
     icones["icone_sharrow"] = s_sharrow
 
+    # 6. Ícone oficial do jogo (256x256) — Placa viária escura com ciclista e zona de perigo
+    s_jogo = pygame.Surface((256, 256), pygame.SRCALPHA)
+    cor_borda_icone = (56, 189, 248)  # Ciano viário (#38bdf8)
+    pontos_placa = [
+        (36, 16), (220, 16), (240, 36), (240, 220),
+        (220, 240), (36, 240), (16, 220), (16, 36),
+    ]
+    pygame.draw.polygon(s_jogo, (9, 11, 15), pontos_placa)
+    pygame.draw.polygon(s_jogo, cor_borda_icone, pontos_placa, width=10)
+
+    # Faixa de asfalto interna e faixa de risco à direita ("Dead Lane")
+    pygame.draw.rect(s_jogo, (24, 28, 36), (42, 38, 172, 180), border_radius=8)
+    pygame.draw.rect(s_jogo, (64, 28, 34), (154, 42, 56, 172), border_radius=4)
+    pygame.draw.line(s_jogo, (248, 113, 113), (154, 42), (154, 214), 5)
+    # Hachura diagonal contida na zona de perigo
+    for hy in range(54, 196, 26):
+        pygame.draw.line(s_jogo, (251, 191, 36), (162, hy + 16), (204, hy), 5)
+
+    # Tracejado central da faixa segura
+    for ty in (48, 106, 164):
+        pygame.draw.rect(s_jogo, (100, 112, 132), (102, ty, 6, 34), border_radius=2)
+
+    # Silhueta da bicicleta vista de cima na faixa segura (x=82)
+    pygame.draw.rect(s_jogo, (244, 246, 249), (77, 82, 10, 86), border_radius=5)  # quadro/rodas
+    pygame.draw.line(s_jogo, (244, 246, 249), (54, 106), (110, 106), 8)  # guidão
+    pygame.draw.rect(s_jogo, cor_borda_icone, (65, 118, 34, 42), border_radius=12)  # ciclista
+    pygame.draw.circle(s_jogo, (244, 246, 249), (82, 116), 14)  # capacete
+
+    # Seta de direção (sharrow) no topo esquerdo
+    pygame.draw.lines(s_jogo, cor_borda_icone, False, [(62, 66), (82, 48), (102, 66)], 6)
+
+    icones["icone_jogo"] = s_jogo
+
     return icones
+
+
+def _salvar_ico_multiresolucao(surf: pygame.Surface, caminho_ico: Path) -> None:
+    """Salva um arquivo .ico válido com PNGs embutidos (16, 32, 48 e 256 px)."""
+    import io
+    import struct
+
+    tamanhos = (16, 32, 48, 256)
+    imagens_png: list[tuple[int, bytes]] = []
+    for tam in tamanhos:
+        redim = pygame.transform.smoothscale(surf, (tam, tam))
+        buf = io.BytesIO()
+        pygame.image.save(redim, buf, "PNG")
+        imagens_png.append((tam, buf.getvalue()))
+
+    cabecalho = struct.pack("<HHH", 0, 1, len(imagens_png))
+    offset = 6 + 16 * len(imagens_png)
+    entradas = bytearray()
+    dados = bytearray()
+    for tam, png_bytes in imagens_png:
+        dim = 0 if tam >= 256 else tam
+        entradas.extend(struct.pack("<BBBBHHII", dim, dim, 0, 0, 1, 32, len(png_bytes), offset))
+        dados.extend(png_bytes)
+        offset += len(png_bytes)
+
+    caminho_ico.write_bytes(cabecalho + entradas + dados)
 
 
 def gerar_todos_os_assets() -> Path:
@@ -467,6 +526,7 @@ def gerar_todos_os_assets() -> Path:
     icones = gerar_icones_aviso()
     for nome, surf in icones.items():
         pygame.image.save(surf, str(pasta_ui / f"{nome}.png"))
+    _salvar_ico_multiresolucao(icones["icone_jogo"], pasta_ui / "icone_jogo.ico")
 
     return pasta_base
 

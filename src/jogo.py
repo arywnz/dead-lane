@@ -9,6 +9,7 @@ if str(pasta_raiz) not in sys.path:
 
 import pygame
 
+from src.assets import carregar_icone
 from src.boletim import desenhar_boletim_pilotagem
 from src.cenario_visual import (
     AVISO,
@@ -40,6 +41,7 @@ from src.configuracao import (
 from src.metricas import RegistroDesempenho, ResumoDesempenho, resumir
 from src.percurso import Percurso
 from src.perigos import FasePontoCego, FasePorta, GerenciadorPerigos
+from src.som import GerenciadorSom
 from src.trafego import GerenciadorTrafego
 
 
@@ -47,38 +49,45 @@ def _obter_mensagem_status(
     motivo_colisao: str | None,
     percurso: Percurso,
     perigos: GerenciadorPerigos,
+    distancia_ciclista_m: float,
     ciclista_no_ponto_cego: bool,
     feedback_seguro_s: float,
+    feedback_texto: str = "Saiu do ponto cego com segurança!",
 ) -> tuple[str, str] | None:
     if motivo_colisao:
         return f"{motivo_colisao} (B para Boletim)", PERIGO
     if percurso.concluido:
         return "Vitória! Percurso concluído.", DESTAQUE
 
-    ponto_cego = perigos.ponto_cego_em_destaque()
+    ponto_cego = perigos.ponto_cego_em_destaque(distancia_ciclista_m)
     if ponto_cego is not None:
         if ponto_cego.fase is FasePontoCego.ATIVO:
-            return "Ônibus fechando à direita! Afaste-se.", PERIGO
+            return f"Ônibus fechando à {ponto_cego.lado}! Afaste-se.", PERIGO
         if ciclista_no_ponto_cego:
             return "Você está no ponto cego! Freie para sair.", PERIGO
-        return "Ponto cego do ônibus. Freie ou passe à esquerda.", AVISO
+        return "Ponto cego do ônibus. Freie ou desvie.", AVISO
 
-    porta = perigos.porta_em_destaque()
+    porta = perigos.porta_em_destaque(distancia_ciclista_m)
     if porta is not None:
         if porta.fase is FasePorta.ABERTA:
             return "Porta aberta na faixa direita.", PERIGO
         return "Aviso de porta. Freie ou mude de faixa.", AVISO
 
     if feedback_seguro_s > 0.0:
-        return "Saiu do ponto cego com segurança!", DESTAQUE
+        return feedback_texto, DESTAQUE
     if percurso.intervalo_restante_s > 0:
         return f"Checkpoint {percurso.indice_trecho} alcançado.", DESTAQUE
     return None
 
 
-def criar_partida() -> tuple[Ciclista, Percurso, GerenciadorPerigos, GerenciadorTrafego]:
+def criar_partida(*, aleatorio: bool = False) -> tuple[Ciclista, Percurso, GerenciadorPerigos, GerenciadorTrafego]:
     """Cria o estado inicial do percurso; usado ao abrir o jogo e ao reiniciar com R."""
-    return Ciclista(), Percurso(), GerenciadorPerigos.criar_padrao(), GerenciadorTrafego()
+    return (
+        Ciclista(),
+        Percurso(),
+        GerenciadorPerigos.criar_padrao(aleatorio=aleatorio),
+        GerenciadorTrafego(aleatorio=aleatorio),
+    )
 
 
 def executar(jogador: str = "", pular_instrucoes: bool = False) -> None:
@@ -89,42 +98,46 @@ def executar(jogador: str = "", pular_instrucoes: bool = False) -> None:
     try:
         tela = pygame.display.set_mode((LARGURA_JANELA, ALTURA_JANELA))
         pygame.display.set_caption("Dead Lane")
+        pygame.display.set_icon(carregar_icone("icone_jogo"))
         relogio = pygame.time.Clock()
-        ciclista, percurso, perigos, trafego = criar_partida()
+        som = GerenciadorSom()
+        ciclista, percurso, perigos, trafego = criar_partida(aleatorio=True)
         motivo_colisao: str | None = None
         tempo_total_s = 0.0
         feedback_seguro_s = 0.0
+        feedback_texto = "Saiu do ponto cego com segurança!"
+        ultimo_alerta_sonoro = ""
+        ultimo_trecho_sonoro = 0
+        veiculos_sonoros: set[int] = set()
         area_ciclista = pygame.FRect(0, 0, LARGURA_COLISAO_CICLISTA, ALTURA_COLISAO_CICLISTA)
         area_ciclista.centery = CICLISTA_TELA_Y
 
-        fonte_titulo = pygame.font.SysFont("Segoe UI", 42, bold=True)
-        fonte_subtitulo = pygame.font.SysFont("Segoe UI", 24, bold=True)
-        fonte_texto = pygame.font.SysFont("Segoe UI", 20)
-        fonte_menor = pygame.font.SysFont("Segoe UI", 17, bold=True)
-        fonte_velocidade = pygame.font.SysFont("Segoe UI", 64, bold=True)
+        fonte_titulo = pygame.font.SysFont("Bahnschrift", 44, bold=True)
+        fonte_subtitulo = pygame.font.SysFont("Bahnschrift", 24, bold=True)
+        fonte_texto = pygame.font.SysFont("Bahnschrift", 19)
+        fonte_menor = pygame.font.SysFont("Bahnschrift", 17, bold=True)
+        fonte_velocidade = pygame.font.SysFont("Bahnschrift", 64, bold=True)
 
         estado_jogo = "jogando" if pular_instrucoes else "instrucoes"
         modo_boletim = "fim"  # "pausa" ou "fim"
+        derrota_boletim = False
         resumo_boletim: ResumoDesempenho | None = None
         comparacoes_boletim: list[Comparacao] = []
         tempo_vitoria_boletim: float = 0.0
         botoes_boletim: dict[str, pygame.Rect] = {}
 
-        def abrir_boletim(modo: str) -> None:
-            nonlocal estado_jogo, modo_boletim, resumo_boletim, comparacoes_boletim, tempo_vitoria_boletim
+        def abrir_boletim(modo: str, *, derrota: bool = False) -> None:
+            nonlocal estado_jogo, modo_boletim, derrota_boletim, resumo_boletim, comparacoes_boletim, tempo_vitoria_boletim
             modo_boletim = modo
-            if modo == "pausa":
-                tentativa_atual = registro.tentativa
-                regs = [r for r in registro.registros if r.tentativa == tentativa_atual]
-                resumo_boletim = resumir(regs, colisoes_trafego=registro.colisoes_trafego)
-                comparacoes_boletim = comparar(regs)
-                tempo_vitoria_boletim = tempo_total_s
+            derrota_boletim = derrota
+            if modo == "pausa" and not tentativa_encerrada:
+                tentativa_alvo = registro.tentativa
             else:
-                tentativa_concluida = registro.tentativa - 1
-                regs = [r for r in registro.registros if r.tentativa == tentativa_concluida]
-                resumo_boletim = resumir(regs, colisoes_trafego=registro.colisoes_trafego)
-                comparacoes_boletim = comparar(regs)
-                tempo_vitoria_boletim = tempo_total_s
+                tentativa_alvo = registro.tentativa - 1
+            regs = [r for r in registro.registros if r.tentativa == tentativa_alvo]
+            resumo_boletim = resumir(regs, colisoes_trafego=registro.colisoes_trafego)
+            comparacoes_boletim = comparar(regs)
+            tempo_vitoria_boletim = tempo_total_s
             estado_jogo = "boletim"
 
         while True:
@@ -154,7 +167,7 @@ def executar(jogador: str = "", pular_instrucoes: bool = False) -> None:
                                 if not tentativa_encerrada:
                                     registro.encerrar_tentativa()
                                 tentativa_encerrada = False
-                                ciclista, percurso, perigos, trafego = criar_partida()
+                                ciclista, percurso, perigos, trafego = criar_partida(aleatorio=True)
                                 motivo_colisao = None
                                 feedback_seguro_s = 0.0
                                 tempo_total_s = 0.0
@@ -167,7 +180,7 @@ def executar(jogador: str = "", pular_instrucoes: bool = False) -> None:
                                 if not tentativa_encerrada:
                                     registro.encerrar_tentativa()
                                 tentativa_encerrada = False
-                                ciclista, percurso, perigos, trafego = criar_partida()
+                                ciclista, percurso, perigos, trafego = criar_partida(aleatorio=True)
                                 motivo_colisao = None
                                 feedback_seguro_s = 0.0
                                 tempo_total_s = 0.0
@@ -177,6 +190,29 @@ def executar(jogador: str = "", pular_instrucoes: bool = False) -> None:
                     else:  # estado_jogo == "jogando"
                         if evento.key in (pygame.K_b, pygame.K_p, pygame.K_ESCAPE):
                             abrir_boletim("pausa")
+                        elif evento.key == pygame.K_SPACE:
+                            teclas_agora = pygame.key.get_pressed()
+                            dir_dash = int(teclas_agora[pygame.K_d] or teclas_agora[pygame.K_RIGHT]) - int(
+                                teclas_agora[pygame.K_a] or teclas_agora[pygame.K_LEFT]
+                            )
+                            pc_atual = perigos.ponto_cego_em_destaque(ciclista.distancia_m)
+                            porta_atual = perigos.porta_em_destaque(ciclista.distancia_m)
+                            em_risco_dash = (
+                                (pc_atual is not None and pc_atual.ciclista_na_zona(area_ciclista, ciclista.distancia_m))
+                                or (
+                                    porta_atual is not None
+                                    and porta_atual.ciclista_em_rota_de_colisao(
+                                        area_ciclista, ciclista.distancia_m, ciclista.velocidade_mps
+                                    )
+                                )
+                                or any(
+                                    -2.0 <= v.distancia_m - ciclista.distancia_m <= 11.0
+                                    and abs(v.x - ciclista.x) <= v.largura * 0.85
+                                    for v in [*trafego.veiculos, *perigos.onibus_ativos(ciclista.distancia_m)]
+                                )
+                            )
+                            if ciclista.acionar_dash(dir_dash, em_risco=em_risco_dash):
+                                som.tocar_dash()
                         elif evento.key in (pygame.K_h, pygame.K_i):
                             estado_jogo = "instrucoes"
                         elif evento.key == pygame.K_r:
@@ -187,6 +223,8 @@ def executar(jogador: str = "", pular_instrucoes: bool = False) -> None:
                             motivo_colisao = None
                             feedback_seguro_s = 0.0
                             tempo_total_s = 0.0
+                            ultimo_alerta_sonoro = ""
+                            ultimo_trecho_sonoro = 0
                 elif evento.type == pygame.MOUSEBUTTONDOWN:
                     if estado_jogo == "instrucoes":
                         estado_jogo = "jogando"
@@ -198,7 +236,7 @@ def executar(jogador: str = "", pular_instrucoes: bool = False) -> None:
                                 if not tentativa_encerrada:
                                     registro.encerrar_tentativa()
                                 tentativa_encerrada = False
-                                ciclista, percurso, perigos, trafego = criar_partida()
+                                ciclista, percurso, perigos, trafego = criar_partida(aleatorio=True)
                                 motivo_colisao = None
                                 feedback_seguro_s = 0.0
                                 tempo_total_s = 0.0
@@ -210,7 +248,7 @@ def executar(jogador: str = "", pular_instrucoes: bool = False) -> None:
                                 if not tentativa_encerrada:
                                     registro.encerrar_tentativa()
                                 tentativa_encerrada = False
-                                ciclista, percurso, perigos, trafego = criar_partida()
+                                ciclista, percurso, perigos, trafego = criar_partida(aleatorio=True)
                                 motivo_colisao = None
                                 feedback_seguro_s = 0.0
                                 tempo_total_s = 0.0
@@ -246,11 +284,24 @@ def executar(jogador: str = "", pular_instrucoes: bool = False) -> None:
                     )
 
                     if perigos.consumir_feedback_seguro() is not None:
+                        feedback_texto = "Saiu do ponto cego com segurança!"
                         feedback_seguro_s = 1.6
+                    elif ciclista.consumir_bonus_dash():
+                        feedback_texto = "Escapada no limite! Bônus de Dash"
+                        feedback_seguro_s = 1.6
+                        som.tocar_vitoria()
                     else:
                         feedback_seguro_s = max(0.0, feedback_seguro_s - delta_s)
 
                     onibus_perigo = perigos.onibus_ativos(ciclista.distancia_m)
+                    for v_som in [*trafego.veiculos, *onibus_perigo]:
+                        vid = id(v_som)
+                        dist_v = v_som.distancia_m - ciclista.distancia_m
+                        if -2.0 <= dist_v <= 24.0 and vid not in veiculos_sonoros:
+                            veiculos_sonoros.add(vid)
+                            som.tocar_passagem_veiculo(eh_onibus=(v_som.tipo.name == "ONIBUS"))
+                        elif dist_v < -10.0 and vid in veiculos_sonoros:
+                            veiculos_sonoros.discard(vid)
                     zonas_bloqueadas = perigos.zonas_bloqueadas_faixa_direita(ciclista.distancia_m)
                     zonas_sem_trafego = perigos.zonas_sem_trafego(ciclista.distancia_m)
                     trafego.atualizar(
@@ -262,13 +313,25 @@ def executar(jogador: str = "", pular_instrucoes: bool = False) -> None:
                         zonas_sem_trafego=zonas_sem_trafego,
                     )
 
-                    ponto_cego_destaque = perigos.ponto_cego_em_destaque()
+                    if percurso.indice_trecho > ultimo_trecho_sonoro:
+                        ultimo_trecho_sonoro = percurso.indice_trecho
+                        som.tocar_vitoria()
+
+                    ponto_cego_destaque = perigos.ponto_cego_em_destaque(ciclista.distancia_m)
                     ciclista_no_ponto_cego = (
                         ponto_cego_destaque is not None
                         and ponto_cego_destaque.ciclista_na_zona(area_ciclista, ciclista.distancia_m)
                     )
 
-                    porta_destaque = perigos.porta_em_destaque()
+                    porta_destaque = perigos.porta_em_destaque(ciclista.distancia_m)
+                    if ponto_cego_destaque is not None and ponto_cego_destaque.fase is FasePontoCego.AVISO:
+                        if ultimo_alerta_sonoro != ponto_cego_destaque.id_evento:
+                            ultimo_alerta_sonoro = ponto_cego_destaque.id_evento
+                            som.tocar_alerta()
+                    elif porta_destaque is not None and porta_destaque.fase is FasePorta.AVISO:
+                        if ultimo_alerta_sonoro != porta_destaque.id_evento:
+                            ultimo_alerta_sonoro = porta_destaque.id_evento
+                            som.tocar_alerta()
                     ciclista_em_risco_porta = (
                         porta_destaque is not None
                         and porta_destaque.ciclista_em_rota_de_colisao(
@@ -288,23 +351,30 @@ def executar(jogador: str = "", pular_instrucoes: bool = False) -> None:
                     colisao_perigo = perigos.verificar_colisao_detalhada(area_ciclista, ciclista.distancia_m)
                     if colisao_perigo is not None:
                         motivo_colisao, id_evento = colisao_perigo
+                        som.tocar_colisao()
                         registro.registrar_colisao(perigos, id_evento, motivo_colisao)
                         registro.encerrar_tentativa()
                         tentativa_encerrada = True
+                        abrir_boletim("fim", derrota=True)
                     else:
                         for veiculo in trafego.veiculos:
                             if area_ciclista.colliderect(veiculo.area_colisao(ciclista.distancia_m)):
-                                motivo_colisao = "Colisão com veículo na avenida. R para reiniciar."
+                                motivo_colisao = "Colisão com veículo na avenida."
+                                som.tocar_colisao()
                                 registro.registrar_colisao_trafego()
                                 registro.encerrar_tentativa()
                                 tentativa_encerrada = True
+                                abrir_boletim("fim", derrota=True)
                                 break
 
                     # VERIFICAÇÃO DE CONCLUSÃO (LINHA DE CHEGADA): ABRE O BOLETIM IMEDIATAMENTE
-                    if percurso.concluido:
+                    if percurso.concluido and not tentativa_encerrada:
+                        som.tocar_vitoria()
                         registro.encerrar_tentativa(tempo_vitoria_s=tempo_total_s)
                         tentativa_encerrada = True
-                        abrir_boletim("fim")
+                        abrir_boletim("fim", derrota=False)
+
+            som.atualizar_ambiente(delta_s, estado_jogo == "jogando" and motivo_colisao is None and not percurso.concluido)
 
             # -----------------------------------------------------------------
             # 3. RENDERIZAÇÃO: CONTROLE TOTAL DO ESTADO
@@ -328,6 +398,7 @@ def executar(jogador: str = "", pular_instrucoes: bool = False) -> None:
                     tempo_animacao_s=tempo_total_s,
                     mouse_pos=mouse_pos,
                     em_pausa=(modo_boletim == "pausa"),
+                    derrota=derrota_boletim,
                 )
             else:
                 tela.fill(FUNDO)
@@ -350,8 +421,8 @@ def executar(jogador: str = "", pular_instrucoes: bool = False) -> None:
                     )
                 desenhar_ciclista(tela, ciclista, frear)
 
-                porta_destaque = perigos.porta_em_destaque()
-                ponto_cego_destaque = perigos.ponto_cego_em_destaque()
+                porta_destaque = perigos.porta_em_destaque(ciclista.distancia_m)
+                ponto_cego_destaque = perigos.ponto_cego_em_destaque(ciclista.distancia_m)
                 em_risco_critico = (
                     ciclista_no_ponto_cego
                     or ciclista_em_risco_porta
@@ -367,8 +438,10 @@ def executar(jogador: str = "", pular_instrucoes: bool = False) -> None:
                     motivo_colisao,
                     percurso,
                     perigos,
+                    ciclista.distancia_m,
                     ciclista_no_ponto_cego,
                     feedback_seguro_s,
+                    feedback_texto,
                 )
                 desenhar_painel(
                     tela,

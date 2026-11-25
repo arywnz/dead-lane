@@ -1,6 +1,7 @@
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from enum import Enum, auto
+import random
 
 import pygame
 
@@ -16,6 +17,7 @@ from src.configuracao import (
     FAIXAS_PISTA,
     INTERVALO_TRAFEGO_PADRAO_M,
     LARGURA_CARRO,
+    LARGURA_FAIXA,
     LARGURA_ONIBUS,
     MARGEM_REMOCAO_TRAFEGO_ATRAS_M,
     MARGEM_REMOCAO_TRAFEGO_FRENTE_M,
@@ -44,6 +46,9 @@ class Veiculo:
     deslocamento_x: float = 0.0
     seta_direita_ativa: bool = False
     eh_perigo: bool = False
+    seta_direcao: int = 0
+    _faixa_destino: int | None = None
+    _tempo_seta_s: float = 0.0
 
     @property
     def largura(self) -> int:
@@ -63,6 +68,19 @@ class Veiculo:
 
     def atualizar(self, delta_s: float) -> None:
         self.distancia_m += self.velocidade_mps * delta_s
+        if self._faixa_destino is not None:
+            if self._tempo_seta_s > 0.0:
+                self._tempo_seta_s = max(0.0, self._tempo_seta_s - delta_s)
+            else:
+                alvo_dx = (self._faixa_destino - self.faixa) * LARGURA_FAIXA
+                passo = (1.0 if alvo_dx > 0 else -1.0) * 115.0 * delta_s
+                if abs(alvo_dx - self.deslocamento_x) <= abs(passo):
+                    self.faixa = self._faixa_destino
+                    self.deslocamento_x = 0.0
+                    self._faixa_destino = None
+                    self.seta_direcao = 0
+                else:
+                    self.deslocamento_x += passo
 
     def area_visual(self, distancia_ciclista_m: float) -> pygame.FRect:
         centro_y = CICLISTA_TELA_Y + (distancia_ciclista_m - self.distancia_m) * ESCALA_PISTA_PX_POR_M
@@ -102,9 +120,15 @@ class GerenciadorTrafego:
 
     intervalo_m: float = INTERVALO_TRAFEGO_PADRAO_M
     max_veiculos: int = MAX_VEICULOS_AMBIENTE_PADRAO
+    aleatorio: bool = False
     veiculos: list[Veiculo] = field(default_factory=list)
     _proximo_marco_spawn_m: float = field(default=22.0, init=False)
     _indice_padrao: int = field(default=0, init=False)
+
+    def __post_init__(self) -> None:
+        if self.aleatorio:
+            self._proximo_marco_spawn_m = random.uniform(18.0, 44.0)
+            self._indice_padrao = random.randrange(len(_PADRAO_SPAWN))
 
     def atualizar(
         self,
@@ -122,6 +146,13 @@ class GerenciadorTrafego:
 
         for veiculo in self.veiculos:
             veiculo.atualizar(delta_s)
+            if (
+                self.aleatorio
+                and veiculo._faixa_destino is None
+                and 4.0 <= veiculo.distancia_m - distancia_ciclista_m <= 28.0
+                and random.random() < 0.45 * delta_s
+            ):
+                self._tentar_iniciar_troca_faixa(veiculo, [*self.veiculos, *veiculos_externos])
 
         self._aplicar_seguimento(delta_s, veiculos_externos)
 
@@ -137,13 +168,16 @@ class GerenciadorTrafego:
             and self._proximo_marco_spawn_m < COMPRIMENTO_PERCURSO_M - 30.0
         ):
             if len(self.veiculos) < self.max_veiculos:
+                if self.aleatorio:
+                    self._indice_padrao = random.randrange(len(_PADRAO_SPAWN))
                 self._tentar_gerar_veiculo(
                     self._proximo_marco_spawn_m,
                     zonas_bloqueadas=zonas_bloqueadas,
                     veiculos_externos=veiculos_externos,
                     zonas_sem_trafego=zonas_sem_trafego,
                 )
-            self._proximo_marco_spawn_m += self.intervalo_m
+            fator = random.uniform(0.75, 1.25) if self.aleatorio else 1.0
+            self._proximo_marco_spawn_m += self.intervalo_m * fator
 
     def _aplicar_seguimento(
         self,
@@ -167,12 +201,32 @@ class GerenciadorTrafego:
                 if espaco < distancia_necessaria:
                     tras.velocidade_mps = min(tras.velocidade_mps, max(0.0, frente.velocidade_mps - 0.8))
                     tras.freando = True
+                    if self.aleatorio and tras._faixa_destino is None:
+                        self._tentar_iniciar_troca_faixa(tras, todos)
                 elif espaco < distancia_necessaria + 4.5 and tras.velocidade_base_mps > frente.velocidade_mps:
                     tras.velocidade_mps = frente.velocidade_mps
                     tras.freando = True
+                    if self.aleatorio and tras._faixa_destino is None:
+                        self._tentar_iniciar_troca_faixa(tras, todos)
                 else:
                     tras.velocidade_mps = min(tras.velocidade_base_mps, tras.velocidade_mps + 2.4 * delta_s)
                     tras.freando = False
+
+    def _tentar_iniciar_troca_faixa(self, veiculo: Veiculo, todos: Sequence[Veiculo]) -> None:
+        candidatas = [f for f in (veiculo.faixa - 1, veiculo.faixa + 1) if 0 <= f < FAIXAS_PISTA]
+        random.shuffle(candidatas)
+        for faixa_alvo in candidatas:
+            ocupada = any(
+                (outro.faixa == faixa_alvo or outro._faixa_destino == faixa_alvo)
+                and abs(outro.distancia_m - veiculo.distancia_m) < (veiculo.comprimento_m + outro.comprimento_m) * 0.6 + 6.0
+                for outro in todos
+                if outro is not veiculo
+            )
+            if not ocupada:
+                veiculo._faixa_destino = faixa_alvo
+                veiculo.seta_direcao = 1 if faixa_alvo > veiculo.faixa else -1
+                veiculo._tempo_seta_s = 0.85
+                return
 
     def _tentar_gerar_veiculo(
         self,

@@ -1,5 +1,6 @@
 from dataclasses import dataclass, field
 from enum import Enum, auto
+import random
 
 import pygame
 
@@ -119,6 +120,7 @@ class PerigoPontoCego:
     velocidade_onibus_mps: float = VELOCIDADE_ONIBUS_MPS
     trecho: int = 0
     id_evento: str = "ponto_cego_1"
+    lado: str = "direita"
     onibus: Veiculo | None = field(default=None, init=False)
     _tempo_decorrido_s: float | None = field(default=None, init=False)
     ciclista_esteve_na_zona: bool = field(default=False, init=False)
@@ -168,14 +170,17 @@ class PerigoPontoCego:
             self._tempo_decorrido_s = 0.0
 
         fase_atual = self.fase
-        self.onibus.seta_direita_ativa = fase_atual in (FasePontoCego.AVISO, FasePontoCego.ATIVO)
+        em_sinal = fase_atual in (FasePontoCego.AVISO, FasePontoCego.ATIVO)
+        sinal_lado = 1 if self.lado == "direita" else -1
+        self.onibus.seta_direita_ativa = em_sinal and self.lado == "direita"
+        self.onibus.seta_direcao = sinal_lado if em_sinal else 0
 
         if fase_atual is FasePontoCego.ATIVO:
             progresso_ativo = (self._tempo_decorrido_s - DURACAO_AVISO_PONTO_CEGO_S) / DURACAO_PONTO_CEGO_ATIVO_S
             fator = min(1.0, max(0.0, progresso_ativo * 1.4))
-            self.onibus.deslocamento_x = DESLOCAMENTO_FECHAMENTO_ONIBUS_PX * fator
+            self.onibus.deslocamento_x = sinal_lado * DESLOCAMENTO_FECHAMENTO_ONIBUS_PX * fator
         elif fase_atual is FasePontoCego.ENCERRADO:
-            self.onibus.deslocamento_x = max(0.0, self.onibus.deslocamento_x - 36.0 * delta_s)
+            self.onibus.deslocamento_x = sinal_lado * DESLOCAMENTO_FECHAMENTO_ONIBUS_PX
 
         if area_ciclista is not None:
             na_zona = self.ciclista_na_zona(area_ciclista, distancia_ciclista_m)
@@ -198,6 +203,13 @@ class PerigoPontoCego:
         if self.onibus is None:
             return None
         bus_rect = self.onibus.area_visual(distancia_ciclista_m)
+        if self.lado == "esquerda":
+            borda_esquerda_pista = CENTRO_PISTA_X - LARGURA_PISTA / 2
+            direita = bus_rect.left + 4
+            largura = min(LARGURA_PONTO_CEGO, direita - borda_esquerda_pista)
+            if largura <= 0:
+                return None
+            return pygame.FRect(direita - largura, bus_rect.top + 36, largura, bus_rect.height - 44)
         borda_direita_pista = CENTRO_PISTA_X + LARGURA_PISTA / 2
         esquerda = bus_rect.right - 4
         largura = min(LARGURA_PONTO_CEGO, borda_direita_pista - esquerda)
@@ -213,15 +225,19 @@ class PerigoPontoCego:
         return self.fase is FasePontoCego.ATIVO and self.ciclista_na_zona(area_ciclista, distancia_ciclista_m)
 
 
-def criar_perigos_percurso() -> tuple[list[PerigoPorta], list[PerigoPontoCego]]:
+def criar_perigos_percurso(aleatorio: bool = False) -> tuple[list[PerigoPorta], list[PerigoPontoCego]]:
     """Constrói os perigos distribuídos nos três trechos com intervalos decrescentes."""
     portas: list[PerigoPorta] = []
     pontos_cegos: list[PerigoPontoCego] = []
     contador_porta = 0
     contador_ponto_cego = 0
+    ultimo_marco_m = 0.0
 
     for indice_trecho, config in enumerate(CONFIG_TRECHOS):
         for tipo, marco_m in config["perigos"]:
+            if aleatorio:
+                marco_m = max(ultimo_marco_m + 72.0, marco_m + random.uniform(-22.0, 22.0))
+            ultimo_marco_m = marco_m
             if tipo == "porta":
                 contador_porta += 1
                 portas.append(
@@ -233,11 +249,18 @@ def criar_perigos_percurso() -> tuple[list[PerigoPorta], list[PerigoPontoCego]]:
                 )
             elif tipo == "ponto_cego":
                 contador_ponto_cego += 1
+                if aleatorio:
+                    lado_pc = "esquerda" if contador_ponto_cego % 2 == 1 else "direita"
+                    if random.random() < 0.35:
+                        lado_pc = "direita" if lado_pc == "esquerda" else "esquerda"
+                else:
+                    lado_pc = "direita"
                 pontos_cegos.append(
                     PerigoPontoCego(
                         distancia_encontro_m=marco_m,
                         trecho=indice_trecho,
                         id_evento=f"ponto_cego_{contador_ponto_cego}",
+                        lado=lado_pc,
                     )
                 )
 
@@ -253,8 +276,8 @@ class GerenciadorPerigos:
     _feedbacks_emitidos: set[str] = field(default_factory=set, init=False)
 
     @classmethod
-    def criar_padrao(cls) -> "GerenciadorPerigos":
-        portas, pontos_cegos = criar_perigos_percurso()
+    def criar_padrao(cls, *, aleatorio: bool = False) -> "GerenciadorPerigos":
+        portas, pontos_cegos = criar_perigos_percurso(aleatorio=aleatorio)
         return cls(portas=portas, pontos_cegos=pontos_cegos)
 
     def atualizar(
@@ -272,6 +295,7 @@ class GerenciadorPerigos:
                 porta.atualizar(delta_s, distancia_ciclista_m, permitir_aviso=permitir_aviso)
 
         for ponto_cego in self.pontos_cegos:
+            em_andamento = ponto_cego.fase in (FasePontoCego.AVISO, FasePontoCego.ATIVO)
             visivel = (
                 ponto_cego.onibus is not None
                 and -18.0 <= ponto_cego.onibus.distancia_m - distancia_ciclista_m <= 48.0
@@ -280,7 +304,7 @@ class GerenciadorPerigos:
                 ponto_cego.onibus is None
                 and distancia_ciclista_m >= ponto_cego.distancia_encontro_m - ANTECEDENCIA_ENTRADA_ONIBUS_M - 4.0
             )
-            if visivel or em_aproximacao:
+            if em_andamento or visivel or em_aproximacao:
                 ponto_cego.atualizar(
                     delta_s,
                     distancia_ciclista_m,
@@ -288,18 +312,26 @@ class GerenciadorPerigos:
                     permitir_aviso=permitir_aviso,
                 )
 
-    def porta_em_destaque(self) -> PerigoPorta | None:
-        abertas = [p for p in self.portas if p.fase is FasePorta.ABERTA]
+    def porta_em_destaque(self, distancia_ciclista_m: float | None = None) -> PerigoPorta | None:
+        def _visivel(p: PerigoPorta) -> bool:
+            return distancia_ciclista_m is None or -10.0 <= p.distancia_m - distancia_ciclista_m <= 28.0
+
+        abertas = [p for p in self.portas if p.fase is FasePorta.ABERTA and _visivel(p)]
         if abertas:
             return abertas[0]
-        avisos = [p for p in self.portas if p.fase is FasePorta.AVISO]
+        avisos = [p for p in self.portas if p.fase is FasePorta.AVISO and _visivel(p)]
         return avisos[0] if avisos else None
 
-    def ponto_cego_em_destaque(self) -> PerigoPontoCego | None:
-        ativos = [p for p in self.pontos_cegos if p.fase is FasePontoCego.ATIVO]
+    def ponto_cego_em_destaque(self, distancia_ciclista_m: float | None = None) -> PerigoPontoCego | None:
+        def _visivel(pc: PerigoPontoCego) -> bool:
+            if pc.onibus is None:
+                return False
+            return distancia_ciclista_m is None or -14.0 <= pc.onibus.distancia_m - distancia_ciclista_m <= 36.0
+
+        ativos = [p for p in self.pontos_cegos if p.fase is FasePontoCego.ATIVO and _visivel(p)]
         if ativos:
             return ativos[0]
-        avisos = [p for p in self.pontos_cegos if p.fase is FasePontoCego.AVISO]
+        avisos = [p for p in self.pontos_cegos if p.fase is FasePontoCego.AVISO and _visivel(p)]
         return avisos[0] if avisos else None
 
     def onibus_ativos(self, distancia_ciclista_m: float) -> list[Veiculo]:

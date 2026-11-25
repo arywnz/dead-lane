@@ -27,7 +27,8 @@ def _garantir_existencia_assets() -> None:
     pasta_assets = obter_pasta_assets()
     pasta_sprites = pasta_assets / "sprites"
     arquivo_teste = pasta_sprites / "ciclista.png"
-    if not arquivo_teste.exists():
+    icone_jogo = pasta_assets / "ui" / "icone_jogo.png"
+    if not arquivo_teste.exists() or not icone_jogo.exists():
         # No modo empacotado (frozen), os assets já devem estar presentes via spec; se não, tenta gerar
         try:
             gerar_todos_os_assets()
