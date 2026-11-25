@@ -542,8 +542,9 @@ def desenhar_painel(
         pygame.draw.rect(tela, DESTAQUE, (x, 272, largura_barra_velocidade, 6), border_radius=3)
 
     # Progresso do percurso em 3 trechos
-    rotulo_distancia = f"Percurso   {int(ciclista.distancia_m)} / {COMPRIMENTO_PERCURSO_M} m"
-    tela.blit(fonte_texto.render(rotulo_distancia, True, TEXTO_SECUNDARIO), (x, 300))
+    restante_m = max(0, int(COMPRIMENTO_PERCURSO_M - ciclista.distancia_m))
+    rotulo_distancia = f"Percurso   {int(ciclista.distancia_m)} / {COMPRIMENTO_PERCURSO_M} m  ({restante_m}m restantes)"
+    tela.blit(fonte_menor.render(rotulo_distancia, True, TEXTO_SECUNDARIO), (x, 302))
     barra_y = 336
     pygame.draw.rect(tela, BORDA_PISTA, (x, barra_y, largura_util, 8), border_radius=4)
     largura_barra_percurso = round(largura_util * ciclista.distancia_m / COMPRIMENTO_PERCURSO_M)
@@ -566,12 +567,12 @@ def desenhar_painel(
             ("Acelerar", "W / ↑"),
             ("Frear (Defensivo)", "S / ↓"),
             ("Mover para os lados", "A D / ← →"),
+            ("Pausa / Boletim", "B / P / Esc"),
             ("Instruções", "H / I"),
             ("Reiniciar", "R"),
-            ("Sair", "Esc"),
         )
     ):
-        y = 380 + linha * 30
+        y = 376 + linha * 28
         tela.blit(fonte_texto.render(acao, True, TEXTO_PRINCIPAL), (x, y))
         rotulo_tecla = fonte_texto.render(teclas, True, TEXTO_SECUNDARIO)
         tela.blit(rotulo_tecla, (x + largura_util - rotulo_tecla.get_width(), y))
