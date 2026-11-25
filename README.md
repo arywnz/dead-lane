@@ -4,6 +4,8 @@
 
 O objetivo do jogador é percorrer com segurança uma avenida movimentada de 2.250 metros dividida em 3 períodos com intensidades de tráfego crescentes, aprendendo a antecipar perigos críticos como a abertura repentina de portas de carros estacionados (*dooring*) e o ponto cego de ônibus em conversão (*angles morts*).
 
+> **Nota sobre execução:** A forma oficial de executar o jogo é diretamente pelo Python (veja as instruções abaixo). Optamos por não distribuir um executável `.exe` empacotado porque binários gerados sem assinatura digital são frequentemente bloqueados pelo Controle Inteligente de Aplicativos / Smart App Control do Windows 11.
+
 ---
 
 ## Recursos e Funcionalidades
