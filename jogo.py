@@ -7,12 +7,14 @@ from src.cenario_visual import (
     DESTAQUE,
     FUNDO,
     PERIGO,
+    desenhar_alerta_borda,
     desenhar_cenario_avenida,
     desenhar_ciclista,
     desenhar_marcos_percurso,
     desenhar_painel,
     desenhar_perigo_ponto_cego,
     desenhar_perigo_porta,
+    desenhar_tela_instrucoes,
     desenhar_veiculo,
 )
 from src.ciclista import Ciclista
@@ -70,7 +72,7 @@ def criar_partida() -> tuple[Ciclista, Percurso, GerenciadorPerigos, Gerenciador
     return Ciclista(), Percurso(), GerenciadorPerigos.criar_padrao(), GerenciadorTrafego()
 
 
-def executar(jogador: str = "") -> None:
+def executar(jogador: str = "", pular_instrucoes: bool = False) -> None:
     registro = RegistroDesempenho(jogador=jogador)
     tentativa_encerrada = False
     pygame.display.init()
@@ -85,30 +87,56 @@ def executar(jogador: str = "") -> None:
         feedback_seguro_s = 0.0
         area_ciclista = pygame.FRect(0, 0, LARGURA_COLISAO_CICLISTA, ALTURA_COLISAO_CICLISTA)
         area_ciclista.centery = CICLISTA_TELA_Y
+
         fonte_titulo = pygame.font.SysFont("Segoe UI", 42, bold=True)
+        fonte_subtitulo = pygame.font.SysFont("Segoe UI", 24, bold=True)
         fonte_texto = pygame.font.SysFont("Segoe UI", 20)
         fonte_menor = pygame.font.SysFont("Segoe UI", 17, bold=True)
         fonte_velocidade = pygame.font.SysFont("Segoe UI", 64, bold=True)
 
+        estado_jogo = "jogando" if pular_instrucoes else "instrucoes"
+
         while True:
             delta_s = min(relogio.tick(FPS_ALVO) / 1000, TEMPO_MAXIMO_QUADRO_S)
             tempo_total_s += delta_s
+
             for evento in pygame.event.get():
                 if evento.type == pygame.QUIT:
                     return
                 if evento.type == pygame.KEYDOWN:
                     if evento.key == pygame.K_ESCAPE:
                         return
-                    if evento.key == pygame.K_r:
-                        if not tentativa_encerrada:
-                            registro.encerrar_tentativa()
-                        tentativa_encerrada = False
-                        ciclista, percurso, perigos, trafego = criar_partida()
-                        motivo_colisao = None
-                        feedback_seguro_s = 0.0
+                    if estado_jogo == "instrucoes":
+                        if evento.key in (pygame.K_SPACE, pygame.K_RETURN, pygame.K_KP_ENTER):
+                            estado_jogo = "jogando"
+                    else:
+                        if evento.key in (pygame.K_h, pygame.K_i):
+                            estado_jogo = "instrucoes"
+                        elif evento.key == pygame.K_r:
+                            if not tentativa_encerrada:
+                                registro.encerrar_tentativa()
+                            tentativa_encerrada = False
+                            ciclista, percurso, perigos, trafego = criar_partida()
+                            motivo_colisao = None
+                            feedback_seguro_s = 0.0
+                elif evento.type == pygame.MOUSEBUTTONDOWN and estado_jogo == "instrucoes":
+                    estado_jogo = "jogando"
+
+            if estado_jogo == "instrucoes":
+                desenhar_tela_instrucoes(
+                    tela,
+                    tempo_total_s,
+                    fonte_titulo,
+                    fonte_texto,
+                    fonte_menor,
+                    fonte_subtitulo,
+                )
+                pygame.display.flip()
+                continue
 
             frear = False
             ciclista_no_ponto_cego = False
+            ciclista_em_risco_porta = False
             if motivo_colisao is None and not percurso.concluido:
                 teclas = pygame.key.get_pressed()
                 esquerda = teclas[pygame.K_a] or teclas[pygame.K_LEFT]
@@ -151,6 +179,17 @@ def executar(jogador: str = "") -> None:
                     and ponto_cego_destaque.ciclista_na_zona(area_ciclista, ciclista.distancia_m)
                 )
 
+                # Verifica se o ciclista está em trajetória de risco de porta
+                porta_destaque = perigos.porta_em_destaque()
+                ciclista_em_risco_porta = (
+                    porta_destaque is not None
+                    and porta_destaque.ciclista_em_rota_de_colisao(
+                        area_ciclista,
+                        ciclista.distancia_m,
+                        ciclista.velocidade_mps,
+                    )
+                )
+
                 registro.atualizar(
                     tempo_total_s,
                     perigos,
@@ -180,7 +219,7 @@ def executar(jogador: str = "") -> None:
             desenhar_cenario_avenida(tela, ciclista.distancia_m, percurso.indice_trecho)
             desenhar_marcos_percurso(tela, ciclista.distancia_m, fonte_texto)
             for porta in perigos.portas:
-                desenhar_perigo_porta(tela, porta, ciclista.distancia_m, fonte_texto)
+                desenhar_perigo_porta(tela, porta, ciclista.distancia_m, fonte_texto, tempo_total_s)
             for veiculo in trafego.veiculos:
                 desenhar_veiculo(tela, veiculo, ciclista.distancia_m, percurso.indice_trecho, tempo_total_s)
             for ponto_cego in perigos.pontos_cegos:
@@ -195,6 +234,21 @@ def executar(jogador: str = "") -> None:
                     em_risco,
                 )
             desenhar_ciclista(tela, ciclista, frear)
+
+            # Alerta periférico na borda da tela ao entrar em área de risco
+            porta_destaque = perigos.porta_em_destaque()
+            ponto_cego_destaque = perigos.ponto_cego_em_destaque()
+            em_risco_critico = (
+                ciclista_no_ponto_cego
+                or ciclista_em_risco_porta
+                or (ponto_cego_destaque is not None and ponto_cego_destaque.fase is FasePontoCego.ATIVO and ciclista_no_ponto_cego)
+            )
+            em_aviso_perigo = (
+                (ponto_cego_destaque is not None and ponto_cego_destaque.fase is FasePontoCego.AVISO)
+                or (porta_destaque is not None and porta_destaque.fase is FasePorta.AVISO)
+            )
+            desenhar_alerta_borda(tela, em_risco_critico, em_aviso_perigo, tempo_total_s)
+
             mensagem_status = _obter_mensagem_status(
                 motivo_colisao,
                 percurso,
@@ -225,8 +279,10 @@ def executar(jogador: str = "") -> None:
 def _ler_argumentos() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Dead Lane: serious game sobre percepção de riscos no trânsito.")
     parser.add_argument("--jogador", default="", help="nome ou código do participante, gravado nos resultados")
+    parser.add_argument("--sem-instrucoes", action="store_true", help="inicia direto na partida pulando a tela de instruções")
     return parser.parse_args()
 
 
 if __name__ == "__main__":
-    executar(_ler_argumentos().jogador)
+    args = _ler_argumentos()
+    executar(args.jogador, pular_instrucoes=args.sem_instrucoes)
