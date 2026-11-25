@@ -1,6 +1,6 @@
 # Dead Lane
 
-**Dead Lane** é um *serious game* 2D em visão superior (top-down) focado no ensino e treino de pilotagem defensiva para ciclistas urbanos. O projeto foi desenvolvido para o Desafio P2 de Desenvolvimento de Jogos Digitais.
+**Dead Lane** é um jogo 2D em visão superior (top-down) focado no ensino e treino de pilotagem defensiva para ciclistas urbanos , o projeto foi desenvolvido para a P2 de Desenvolvimento de Jogos Digitais.
 
 O objetivo do jogador é percorrer com segurança uma avenida movimentada de 2.250 metros dividida em 3 períodos com intensidades de tráfego crescentes, aprendendo a antecipar perigos críticos como a abertura repentina de portas de carros estacionados (*dooring*) e o ponto cego de ônibus em conversão (*angles morts*).
 
