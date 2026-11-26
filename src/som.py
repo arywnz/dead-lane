@@ -1,5 +1,7 @@
 """Gerenciador de áudio usando gravações reais em assets/sounds/."""
 
+from __future__ import annotations
+
 import pygame
 
 from src.assets import obter_pasta_assets

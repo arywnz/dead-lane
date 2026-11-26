@@ -1,5 +1,7 @@
 """Testes da colisão com a porta do carro estacionado."""
 
+from __future__ import annotations
+
 from simulacao import SEGUIR, Comando, Simulacao, criar_area_ciclista
 
 from jogo import criar_partida
@@ -161,3 +163,34 @@ def test_reiniciar_apos_colisao_restaura_o_percurso() -> None:
     # A nova tentativa se comporta exatamente como a primeira.
     assert _bater_na_primeira_porta(ciclista, perigos) == MENSAGEM_PORTA
     assert ciclista.distancia_m == distancia_primeira_colisao
+
+
+def test_porta_esquerda_colide_na_faixa_esquerda_e_poupa_faixa_central() -> None:
+    faixa_esquerda_x = CENTROS_FAIXAS_X[0]
+    porta_esq = PerigoPorta(distancia_m=40.0, lado="esquerda")
+    sim_col = Simulacao(Ciclista(x=faixa_esquerda_x), GerenciadorPerigos(portas=[porta_esq], pontos_cegos=[]))
+    assert sim_col.executar(_seguir_reto, duracao_s=10.0) == MENSAGEM_PORTA
+
+    porta_esq_2 = PerigoPorta(distancia_m=40.0, lado="esquerda")
+    sim_seg = Simulacao(Ciclista(x=FAIXA_CENTRAL_X), GerenciadorPerigos(portas=[porta_esq_2], pontos_cegos=[]))
+    assert (
+        sim_seg.executar(
+            _seguir_reto,
+            duracao_s=10.0,
+            parar_quando=lambda s: s.ciclista.distancia_m > porta_esq_2.distancia_m + 5.0,
+        )
+        is None
+    )
+
+
+def test_porta_em_velocidade_maxima_ainda_causa_colisao() -> None:
+    for lado, x_ini in (("direita", FAIXA_DIREITA_X), ("esquerda", CENTROS_FAIXAS_X[0])):
+        porta = PerigoPorta(distancia_m=60.0, lado=lado)
+        sim = Simulacao(Ciclista(x=x_ini, velocidade_mps=16.0), GerenciadorPerigos(portas=[porta], pontos_cegos=[]))
+        assert sim.executar(_seguir_reto, duracao_s=10.0) == MENSAGEM_PORTA
+
+
+def test_percurso_inclui_portas_nos_dois_lados() -> None:
+    _c, _p, perigos, _t = criar_partida(aleatorio=False)
+    lados = {porta.lado for porta in perigos.portas}
+    assert lados == {"esquerda", "direita"}

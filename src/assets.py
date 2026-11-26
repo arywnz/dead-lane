@@ -1,5 +1,7 @@
 """Gerenciador e cache de assets visuais (sprites, ícones e texturas)."""
 
+from __future__ import annotations
+
 import sys
 from pathlib import Path
 import pygame

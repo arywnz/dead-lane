@@ -1,5 +1,7 @@
 """Testes do registro de antecipações, reações tardias e falhas."""
 
+from __future__ import annotations
+
 import csv
 from datetime import datetime
 from pathlib import Path
@@ -234,3 +236,127 @@ def test_resumo_vazio() -> None:
     assert resumo.total_perigos == 0
     assert resumo.tempo_medio_resposta_s is None
     assert resumo.erro_mais_comum is None
+
+
+def test_porta_desvio_tardio_no_fim_do_aviso_conta_como_reacao_tardia(registro: RegistroDesempenho) -> None:
+    porta = PerigoPorta(distancia_m=60.0, id_evento="porta_1", lado="esquerda")
+    sim = Simulacao(Ciclista(x=FAIXA_ESQUERDA_X, velocidade_mps=14.0), GerenciadorPerigos([porta], []), registro)
+    inicio_aviso: list[float] = []
+
+    def desviar_tarde(s: Simulacao) -> Comando:
+        if porta.fase is not FasePorta.AGUARDANDO and not inicio_aviso:
+            inicio_aviso.append(s.tempo_s)
+        precisa = bool(inicio_aviso) and s.tempo_s - inicio_aviso[0] >= 0.65 and s.ciclista.x < FAIXA_CENTRAL_X
+        return Comando(lateral=1 if precisa else 0)
+
+    resultado = _rodar_ate_registrar(sim, desviar_tarde)
+
+    assert resultado.resultado is ResultadoPerigo.REACAO_TARDIA
+    assert resultado.tempo_resposta_s > LIMITE_ANTECIPACAO_PORTA_S
+
+
+def test_ponto_cego_atravessar_em_alta_velocidade_conta_como_reacao_tardia(registro: RegistroDesempenho) -> None:
+    ponto_cego = PerigoPontoCego(distancia_encontro_m=60.0, id_evento="ponto_cego_1")
+    sim = Simulacao(Ciclista(x=FAIXA_DIREITA_X, velocidade_mps=14.0), GerenciadorPerigos([], [ponto_cego]), registro)
+
+    resultado = _rodar_ate_registrar(sim, lambda s: SEGUIR)
+
+    assert resultado.resultado is ResultadoPerigo.REACAO_TARDIA
+    assert resultado.tempo_resposta_s > LIMITE_ANTECIPACAO_PONTO_CEGO_S
+
+
+def test_colisao_trafego_nao_vaza_para_tentativa_seguinte(registro: RegistroDesempenho) -> None:
+    registro.registrar_colisao_trafego()
+    assert registro.colisoes_trafego_da_tentativa(1) == 1
+    registro.encerrar_tentativa()
+
+    assert registro.tentativa == 2
+    assert registro.colisoes_trafego_da_tentativa(2) == 0
+    assert registro.resumo(apenas_tentativa_atual=True).colisoes_trafego == 0
+    assert registro.resumo(apenas_tentativa_atual=False).colisoes_trafego == 1
+
+
+def test_parry_dash_so_concede_bonus_quando_sai_do_risco() -> None:
+    ciclista = Ciclista(x=FAIXA_DIREITA_X)
+    assert ciclista.acionar_dash(-1, em_risco=True)
+    recarga_inicial = ciclista.dash_recarga_s
+    for _ in range(15):
+        ciclista.atualizar(1 / 60, 0, False, False)
+    assert ciclista.dash_parry_pendente
+
+    # Se continuou em risco ao fim do dash, NÃO ganha bônus
+    assert not ciclista.resolver_parry_dash(ainda_em_risco=True)
+    assert ciclista.parries_realizados == 0
+    assert not ciclista.consumir_bonus_dash()
+
+    # Nova tentativa saindo de fato do risco: ganha bônus e reduz recarga
+    ciclista.dash_recarga_s = 0.0
+    assert ciclista.acionar_dash(-1, em_risco=True)
+    for _ in range(15):
+        ciclista.atualizar(1 / 60, 0, False, False)
+    assert ciclista.resolver_parry_dash(ainda_em_risco=False)
+    assert ciclista.parries_realizados == 1
+    assert ciclista.consumir_bonus_dash()
+    assert ciclista.dash_recarga_s < recarga_inicial - 2.0
+
+
+def test_trafego_denso_nao_sobrepoe_veiculos_nem_portas() -> None:
+    import random
+    from simulacao import criar_area_ciclista
+    from src.configuracao import COMPRIMENTO_PERCURSO_M
+    from src.percurso import Percurso
+    from src.trafego import GerenciadorTrafego
+
+    random.seed(42)
+    perigos = GerenciadorPerigos.criar_padrao(aleatorio=True)
+    trafego = GerenciadorTrafego(aleatorio=True)
+    percurso = Percurso()
+    area = criar_area_ciclista(FAIXA_CENTRAL_X)
+    dist = 0.0
+    dt = 1 / 60
+    while dist < COMPRIMENTO_PERCURSO_M:
+        dist += 13.0 * dt
+        percurso.atualizar(dt, dist)
+        perigos.atualizar(dt, dist, area, permitir_aviso=percurso.pode_iniciar_perigo, velocidade_mps=13.0)
+        onibus = perigos.onibus_ativos(dist)
+        trafego.atualizar(
+            dt,
+            dist,
+            zonas_bloqueadas=perigos.zonas_bloqueadas_faixa_direita(dist),
+            zonas_bloqueadas_esquerda=perigos.zonas_bloqueadas_faixa_esquerda(dist),
+            veiculos_externos=onibus,
+            indice_trecho=percurso.indice_trecho,
+            zonas_sem_trafego=perigos.zonas_sem_trafego(dist),
+        )
+        todos = [*trafego.veiculos, *onibus]
+        for i in range(len(todos)):
+            ri = todos[i].area_visual(dist)
+            for j in range(i + 1, len(todos)):
+                assert not ri.colliderect(todos[j].area_visual(dist))
+        for porta in perigos.portas:
+            if porta.fase is FasePorta.ABERTA:
+                rp = porta.area_porta(dist)
+                for v in trafego.veiculos:
+                    assert not v.area_visual(dist).colliderect(rp)
+
+
+def test_checkpoint_ativa_protecao_de_2s_e_pausa_spawn_de_trafego() -> None:
+    from src.configuracao import COMPRIMENTO_TRECHO_M, INTERVALO_PONTO_CONTROLE_S
+    from src.percurso import Percurso
+    from src.trafego import GerenciadorTrafego
+
+    percurso = Percurso()
+    trafego = GerenciadorTrafego()
+    percurso.atualizar(0.05, float(COMPRIMENTO_TRECHO_M) + 1.0)
+    assert percurso.indice_trecho == 1
+    assert percurso.intervalo_restante_s == INTERVALO_PONTO_CONTROLE_S
+    assert not percurso.pode_iniciar_perigo
+
+    # Enquanto protegido, novos veículos não nascem no checkpoint
+    trafego.atualizar(0.5, float(COMPRIMENTO_TRECHO_M) + 5.0, indice_trecho=1, pausar_spawn=True)
+    assert trafego.veiculos == []
+
+    # Depois de 2 segundos, a proteção termina e o percurso libera perigos normalmente
+    percurso.atualizar(INTERVALO_PONTO_CONTROLE_S, float(COMPRIMENTO_TRECHO_M) + 25.0)
+    assert percurso.intervalo_restante_s == 0.0
+    assert percurso.pode_iniciar_perigo

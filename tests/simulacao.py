@@ -1,5 +1,7 @@
 """Simulação quadro a quadro do ciclista e dos perigos, na mesma ordem usada em jogo.py."""
 
+from __future__ import annotations
+
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
@@ -45,7 +47,12 @@ class Simulacao:
         self.tempo_s += DELTA_S
         self.ciclista.atualizar(DELTA_S, comando.lateral, comando.acelerar, comando.frear)
         self.area.centerx = self.ciclista.x
-        self.perigos.atualizar(DELTA_S, self.ciclista.distancia_m, self.area)
+        self.perigos.atualizar(
+            DELTA_S,
+            self.ciclista.distancia_m,
+            self.area,
+            velocidade_mps=self.ciclista.velocidade_mps,
+        )
         if self.registro is not None:
             self.registro.atualizar(
                 self.tempo_s,

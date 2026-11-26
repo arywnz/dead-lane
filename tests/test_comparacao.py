@@ -1,5 +1,7 @@
 """Testes da comparação de desempenho em situações equivalentes (início × fim)."""
 
+from __future__ import annotations
+
 from pathlib import Path
 
 import pytest

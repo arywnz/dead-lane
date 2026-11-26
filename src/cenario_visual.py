@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from dataclasses import dataclass
 import math
 
@@ -107,6 +109,15 @@ PALETAS_TRECHO: tuple[PaletaTrecho, ...] = (
 
 _CONE_FAROL_CACHE: pygame.Surface | None = None
 _HALO_POSTE_CACHE: pygame.Surface | None = None
+_SPRITES_ESPELHADOS_CACHE: dict[str, pygame.Surface] = {}
+
+
+def _carregar_sprite_lado(nome: str, lado: str) -> pygame.Surface:
+    if lado != "esquerda":
+        return carregar_sprite(nome)
+    if nome not in _SPRITES_ESPELHADOS_CACHE:
+        _SPRITES_ESPELHADOS_CACHE[nome] = pygame.transform.flip(carregar_sprite(nome), True, False)
+    return _SPRITES_ESPELHADOS_CACHE[nome]
 
 
 def _cone_farol() -> pygame.Surface:
@@ -151,21 +162,26 @@ def desenhar_cenario_avenida(
     direita_pista = esquerda_pista + LARGURA_PISTA
     largura_faixa = LARGURA_PISTA // FAIXAS_PISTA
 
-    # Área urbana esquerda e calçada esquerda
-    pygame.draw.rect(tela, paleta.fundo, (0, 0, esquerda_pista - 36, ALTURA_JANELA))
-    pygame.draw.rect(tela, paleta.calcada, (esquerda_pista - 36, 0, 36, ALTURA_JANELA))
+    # Área urbana esquerda, calçada esquerda e baia de estacionamento esquerda (espelho da direita)
+    larg_baia = 62
+    larg_calcada_esq = 24
+    x_baia_esq = esquerda_pista - larg_baia
+    x_calcada_esq = x_baia_esq - larg_calcada_esq
+    pygame.draw.rect(tela, paleta.fundo, (0, 0, x_calcada_esq, ALTURA_JANELA))
+    pygame.draw.rect(tela, paleta.calcada, (x_calcada_esq, 0, larg_calcada_esq, ALTURA_JANELA))
+    pygame.draw.rect(tela, "#202a2a", (x_baia_esq, 0, larg_baia, ALTURA_JANELA))
 
     # Textura sutil de lajotas na calçada esquerda
     passo_calcada = 28
     desloc_calc = int(distancia_m * ESCALA_PISTA_PX_POR_M) % passo_calcada
     for y in range(desloc_calc - passo_calcada, ALTURA_JANELA, passo_calcada):
-        pygame.draw.line(tela, (40, 52, 48), (esquerda_pista - 36, y), (esquerda_pista, y), 1)
+        pygame.draw.line(tela, (40, 52, 48), (x_calcada_esq, y), (x_baia_esq, y), 1)
 
     # Baia de estacionamento e calçada direita (mantendo folga limpa até o painel em x=748)
-    pygame.draw.rect(tela, "#202a2a", (direita_pista, 0, 62, ALTURA_JANELA))
-    pygame.draw.rect(tela, paleta.calcada, (direita_pista + 62, 0, 24, ALTURA_JANELA))
+    pygame.draw.rect(tela, "#202a2a", (direita_pista, 0, larg_baia, ALTURA_JANELA))
+    pygame.draw.rect(tela, paleta.calcada, (direita_pista + larg_baia, 0, 24, ALTURA_JANELA))
     for y in range(desloc_calc - passo_calcada, ALTURA_JANELA, passo_calcada):
-        pygame.draw.line(tela, (40, 52, 48), (direita_pista + 62, y), (direita_pista + 86, y), 1)
+        pygame.draw.line(tela, (40, 52, 48), (direita_pista + larg_baia, y), (direita_pista + 86, y), 1)
 
     # Leito da avenida
     pygame.draw.rect(tela, paleta.asfalto, (esquerda_pista, 0, LARGURA_PISTA, ALTURA_JANELA))
@@ -176,12 +192,13 @@ def desenhar_cenario_avenida(
         pygame.draw.rect(tela, paleta.trilho_pneu, (cx - 26, 0, 14, ALTURA_JANELA))
         pygame.draw.rect(tela, paleta.trilho_pneu, (cx + 12, 0, 14, ALTURA_JANELA))
 
-    # Meio-fio reforçado (granito com chanfro)
+    # Meio-fio reforçado (granito com chanfro) e bordas das duas baias de estacionamento
+    pygame.draw.line(tela, BORDA_PISTA, (x_baia_esq, 0), (x_baia_esq, ALTURA_JANELA), 3)
     pygame.draw.line(tela, paleta.meio_fio, (esquerda_pista, 0), (esquerda_pista, ALTURA_JANELA), 4)
     pygame.draw.line(tela, (30, 40, 38), (esquerda_pista + 2, 0), (esquerda_pista + 2, ALTURA_JANELA), 1)
     pygame.draw.line(tela, paleta.meio_fio, (direita_pista, 0), (direita_pista, ALTURA_JANELA), 4)
     pygame.draw.line(tela, (30, 40, 38), (direita_pista - 2, 0), (direita_pista - 2, ALTURA_JANELA), 1)
-    pygame.draw.line(tela, BORDA_PISTA, (direita_pista + 62, 0), (direita_pista + 62, ALTURA_JANELA), 3)
+    pygame.draw.line(tela, BORDA_PISTA, (direita_pista + larg_baia, 0), (direita_pista + larg_baia, ALTURA_JANELA), 3)
 
     # Divisórias tracejadas das faixas
     espacamento_tracos = 110
@@ -191,10 +208,12 @@ def desenhar_cenario_avenida(
         for y in range(deslocamento - espacamento_tracos, ALTURA_JANELA, espacamento_tracos):
             pygame.draw.rect(tela, MARCACAO_FAIXA, (faixa_x - 2, y, 4, 52), border_radius=2)
 
-    # Demarcação de vagas na baia direita
+    # Demarcação de vagas nas duas baias (esquerda e direita)
     passo_vaga = 140
     desloc_vaga = int(distancia_m * ESCALA_PISTA_PX_POR_M) % passo_vaga
     for y in range(desloc_vaga - passo_vaga, ALTURA_JANELA, passo_vaga):
+        pygame.draw.line(tela, "#3d4c49", (x_baia_esq + 6, y), (esquerda_pista - 6, y), 2)
+        pygame.draw.line(tela, "#556865", (esquerda_pista - 14, y), (esquerda_pista - 6, y), 2)
         pygame.draw.line(tela, "#3d4c49", (direita_pista + 6, y), (direita_pista + 56, y), 2)
         pygame.draw.line(tela, "#556865", (direita_pista + 6, y), (direita_pista + 14, y), 2)
 
@@ -213,9 +232,9 @@ def desenhar_cenario_avenida(
     for idx in range(primeiro_indice, ultimo_indice + 1):
         marco_m = idx * passo_bloco_m
         y_centro = round(_y_tela(distancia_m, marco_m))
-        largura_bloco = 136 if idx % 2 == 0 else 108
+        largura_bloco = 116 if idx % 2 == 0 else 94
         altura_bloco = 175 if idx % 3 != 0 else 210
-        bx = 20 if idx % 2 == 0 else 42
+        bx = 12 if idx % 2 == 0 else 28
         bloco_rect = pygame.Rect(bx, y_centro - altura_bloco // 2, largura_bloco, altura_bloco)
         pygame.draw.rect(tela, paleta.bloco_urbano, bloco_rect, border_radius=10)
         pygame.draw.rect(tela, paleta.telhado_urbano, bloco_rect.inflate(-24, -28), border_radius=6)
@@ -223,16 +242,16 @@ def desenhar_cenario_avenida(
         pygame.draw.rect(tela, (25, 40, 36), (bloco_rect.centerx - 12, bloco_rect.centery - 10, 24, 20), border_radius=3)
 
         # Árvore estilizada na calçada esquerda com sombra
-        arvore_x = esquerda_pista - 18
+        arvore_x = x_calcada_esq + larg_calcada_esq // 2
         arvore_y = y_centro - 48
-        pygame.draw.circle(tela, "#0f1716", (arvore_x + paleta.sombra_dx, arvore_y + paleta.sombra_dy), 13)
-        pygame.draw.circle(tela, paleta.copa_arvore, (arvore_x, arvore_y), 13)
-        pygame.draw.circle(tela, paleta.copa_luz, (arvore_x - 3, arvore_y - 3), 7)
-        pygame.draw.circle(tela, (70, 140, 115), (arvore_x - 5, arvore_y - 5), 3)
+        pygame.draw.circle(tela, "#0f1716", (arvore_x + paleta.sombra_dx, arvore_y + paleta.sombra_dy), 11)
+        pygame.draw.circle(tela, paleta.copa_arvore, (arvore_x, arvore_y), 11)
+        pygame.draw.circle(tela, paleta.copa_luz, (arvore_x - 2, arvore_y - 2), 6)
+        pygame.draw.circle(tela, (70, 140, 115), (arvore_x - 4, arvore_y - 4), 2)
 
         # Poste de iluminação periódico
         if idx % 2 == 0:
-            poste_x = esquerda_pista - 10
+            poste_x = x_baia_esq - 6
             poste_y = y_centro + 56
             if paleta.farois_ativos:
                 tela.blit(_halo_poste(), (poste_x - 42, poste_y - 42))
@@ -279,17 +298,21 @@ def desenhar_perigo_porta(
     esta_em_aviso = fase is FasePorta.AVISO
     esta_aberta = fase is FasePorta.ABERTA
 
-    # Desenha o carro estacionado com sprite
-    sprite_carro = carregar_sprite("carro_estacionado_aviso" if esta_em_aviso else "carro_estacionado")
+    # Desenha o carro estacionado com sprite (espelhado se estiver na baia esquerda)
+    eh_esquerda = perigo.lado == "esquerda"
+    sprite_carro = _carregar_sprite_lado(
+        "carro_estacionado_aviso" if esta_em_aviso else "carro_estacionado",
+        perigo.lado,
+    )
     tela.blit(sprite_carro, retangulo_carro.topleft)
 
     if esta_em_aviso:
-        # 1. Sinalização visual de perigo da porta: Área de swing projetada no asfalto da faixa direita
+        # 1. Sinalização visual de perigo da porta: Área de swing projetada no asfalto
         porta_f = perigo.area_porta(distancia_ciclista_m)
         retangulo_porta = pygame.Rect(round(porta_f.x), round(porta_f.y), round(porta_f.w), round(porta_f.h))
 
         # Blit da hachura de aviso na zona de abertura da porta (68x24)
-        sprite_zona = carregar_sprite("porta_aviso_zona")
+        sprite_zona = _carregar_sprite_lado("porta_aviso_zona", perigo.lado)
         tela.blit(sprite_zona, retangulo_porta.topleft)
 
         # Borda pulsante da zona de risco
@@ -299,13 +322,20 @@ def desenhar_perigo_porta(
         pygame.draw.rect(surf_borda, (255, 207, 112, alfa_borda), (0, 0, retangulo_porta.width, retangulo_porta.height), width=2, border_radius=4)
         tela.blit(surf_borda, retangulo_porta.topleft)
 
-        # Badge visual de perigo com ícone
+        # Badge visual de perigo com ícone (sempre visível dentro da avenida)
         icone = carregar_icone("icone_porta")
-        badge_y = retangulo_carro.top - 36
-        badge_x = retangulo_carro.left - 40
-        tela.blit(icone, (badge_x - 30, badge_y - 8))
+        if eh_esquerda:
+            icone = pygame.transform.flip(icone, True, False)
+        badge_y = max(14, retangulo_carro.top - 36)
         rotulo = fonte.render("! PORTA ABRINDO", True, AVISO)
-        fundo_badge = pygame.Rect(badge_x + 12, badge_y, rotulo.get_width() + 14, rotulo.get_height() + 4)
+        if eh_esquerda:
+            badge_x = retangulo_carro.right + 8
+            tela.blit(icone, (badge_x, badge_y - 8))
+            fundo_badge = pygame.Rect(badge_x + icone.get_width() + 6, badge_y, rotulo.get_width() + 14, rotulo.get_height() + 4)
+        else:
+            badge_x = retangulo_carro.left - 40
+            tela.blit(icone, (badge_x - 30, badge_y - 8))
+            fundo_badge = pygame.Rect(badge_x + 12, badge_y, rotulo.get_width() + 14, rotulo.get_height() + 4)
         pygame.draw.rect(tela, FUNDO, fundo_badge, border_radius=5)
         pygame.draw.rect(tela, AVISO, fundo_badge, width=1, border_radius=5)
         tela.blit(rotulo, (fundo_badge.x + 7, fundo_badge.y + 2))
@@ -314,14 +344,15 @@ def desenhar_perigo_porta(
         # Porta aberta com sprite detalhado (68x24)
         porta_f = perigo.area_porta(distancia_ciclista_m)
         retangulo_porta = pygame.Rect(round(porta_f.x), round(porta_f.y), round(porta_f.w), round(porta_f.h))
-        sprite_porta = carregar_sprite("porta_aberta")
+        sprite_porta = _carregar_sprite_lado("porta_aberta", perigo.lado)
         tela.blit(sprite_porta, retangulo_porta.topleft)
 
         # Destaque de perigo e exclamação de impacto
         pygame.draw.rect(tela, PERIGO, retangulo_porta, width=2, border_radius=4)
 
         icone = carregar_icone("icone_alerta")
-        tela.blit(icone, (retangulo_porta.left - 24, retangulo_porta.centery - icone.get_height() // 2))
+        icone_x = retangulo_porta.right + 4 if eh_esquerda else retangulo_porta.left - 24
+        tela.blit(icone, (icone_x, retangulo_porta.centery - icone.get_height() // 2))
 
 
 def desenhar_perigo_ponto_cego(
@@ -444,10 +475,47 @@ def desenhar_veiculo(
         pygame.draw.rect(tela, AVISO, (x_seta, rect.bottom - 16, 5, 10), border_radius=2)
 
 
-def desenhar_ciclista(tela: pygame.Surface, ciclista: Ciclista, freando: bool) -> None:
+def desenhar_ciclista(
+    tela: pygame.Surface,
+    ciclista: Ciclista,
+    freando: bool,
+    protecao_s: float = 0.0,
+    tempo_s: float = 0.0,
+) -> None:
     x, y = round(ciclista.x), CICLISTA_TELA_Y
     esta_freando = freando and ciclista.velocidade_mps > 0
     sprite = carregar_sprite("ciclista_freando" if esta_freando else "ciclista")
+
+    # Escudo visual durante a proteção de 2 s do checkpoint (pisca suavemente ao final)
+    if protecao_s > 0.0:
+        piscando = protecao_s <= 0.65 and int(tempo_s * 14) % 2 == 0
+        if not piscando:
+            pulso = 0.5 + 0.5 * math.sin(tempo_s * 10.0)
+            escudo = pygame.Surface((68, 88), pygame.SRCALPHA)
+            alfa_preench = int(32 + 24 * pulso)
+            alfa_borda = int(175 + 65 * pulso)
+            pygame.draw.ellipse(escudo, (56, 189, 248, alfa_preench), (4, 4, 60, 80))
+            pygame.draw.ellipse(escudo, (56, 189, 248, alfa_borda), (4, 4, 60, 80), width=2)
+            tela.blit(escudo, (x - 34, y - 44))
+
+    # Rastro translúcido durante o Dash (lateral ou avanço)
+    if ciclista.dash_restante_s > 0.0:
+        for passo in (2, 1):
+            fantasma = sprite.copy()
+            fantasma.set_alpha(65 if passo == 2 else 115)
+            dx = -ciclista.dash_direcao * passo * 13 if not ciclista.dash_avanco else 0
+            dy = passo * 14 if ciclista.dash_avanco else 0
+            tela.blit(fantasma, (x - 16 + dx, y - 28 + dy))
+
+    # Pulso visual de confirmação de escapada no limite ("parry")
+    if ciclista.parry_flash_s > 0.0:
+        progresso = 1.0 - min(1.0, ciclista.parry_flash_s / 0.55)
+        raio = int(20 + progresso * 26)
+        alfa = int(210 * (1.0 - progresso))
+        anel = pygame.Surface((raio * 2 + 6, raio * 2 + 6), pygame.SRCALPHA)
+        pygame.draw.circle(anel, (56, 189, 248, alfa), (raio + 3, raio + 3), raio, width=3)
+        tela.blit(anel, (x - raio - 3, y - raio - 3))
+
     # Sprite tem 32x56; seu centro (16, 28) alinha perfeitamente com a hitbox central (24x52)
     tela.blit(sprite, (x - 16, y - 28))
 
@@ -502,7 +570,7 @@ def desenhar_alerta_borda(
         pygame.draw.line(alerta_surf, cor_canto, (8, altura_t - 8), (8 + tam_canto, altura_t - 8), 4)
         pygame.draw.line(alerta_surf, cor_canto, (8, altura_t - 8), (8, altura_t - 8 - tam_canto), 4)
         # Canto Inferior Direito
-        pygame.draw.line(alerta_surf, cor_canto, (largura_t - 8, altura_t - 8), (largura_t - 8 - tam_canto, 8), 4)
+        pygame.draw.line(alerta_surf, cor_canto, (largura_t - 8, altura_t - 8), (largura_t - 8 - tam_canto, altura_t - 8), 4)
         pygame.draw.line(alerta_surf, cor_canto, (largura_t - 8, altura_t - 8), (largura_t - 8, altura_t - 8 - tam_canto), 4)
 
     tela.blit(alerta_surf, (0, 0))
@@ -589,7 +657,7 @@ def desenhar_painel(
     atalhos = (
         ("WASD / Setas", "Acelerar e mudar de faixa"),
         ("Espaço", "Dash lateral rápido"),
-        ("B / P / Esc", "Boletim e pausa"),
+        ("B / P / Esc", "Resultado e pausa"),
         ("H  ·  R", "Instruções  ·  Reiniciar"),
     )
     for idx_a, (tecla_a, desc_a) in enumerate(atalhos):

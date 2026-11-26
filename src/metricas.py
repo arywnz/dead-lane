@@ -1,10 +1,12 @@
 """Registro de desempenho: classifica cada perigo como antecipação, reação tardia ou falha.
 
-Para cada perigo, o registro começa no aviso e acompanha, quadro a quadro, se o ciclista
+Para cada perigo, o registro começa no aviso e acompanha, quadro a quadro, se o motociclista
 está em risco (rota de colisão com a porta ou dentro do ponto cego do ônibus). O tempo de
-resposta é o intervalo entre o aviso e o instante em que o ciclista saiu do risco pela
+resposta é o intervalo entre o aviso e o instante em que o motociclista saiu do risco pela
 última vez, ou seja, a ação que realmente resolveu a situação.
 """
+
+from __future__ import annotations
 
 import csv
 from collections import Counter
@@ -88,6 +90,7 @@ class RegistroDesempenho:
         self.tentativa = 1
         self.registros: list[RegistroPerigo] = []
         self.colisoes_trafego = 0
+        self._colisoes_trafego_por_tentativa: Counter[int] = Counter()
         inicio = inicio_sessao or datetime.now()
         self.caminho_csv = Path(pasta_resultados) / f"sessao_{inicio:%Y%m%d_%H%M%S}.csv"
         self._acompanhamentos: dict[str, _Acompanhamento] = {}
@@ -97,6 +100,9 @@ class RegistroDesempenho:
     @property
     def registros_tentativa_atual(self) -> list[RegistroPerigo]:
         return [r for r in self.registros if r.tentativa == self.tentativa]
+
+    def colisoes_trafego_da_tentativa(self, tentativa: int) -> int:
+        return self._colisoes_trafego_por_tentativa[tentativa]
 
     def atualizar(
         self,
@@ -108,27 +114,37 @@ class RegistroDesempenho:
     ) -> None:
         """Deve ser chamado a cada quadro, depois de `perigos.atualizar`."""
         for porta in perigos.portas:
+            ja_passou_porta = (
+                porta.fase in (FasePorta.AVISO, FasePorta.ABERTA)
+                and distancia_ciclista_m > porta.distancia_m + 3.0
+            )
             self._acompanhar(
                 tempo_s,
                 porta.id_evento,
                 TIPO_PORTA,
                 porta.trecho,
                 porta.distancia_m,
-                em_andamento=porta.fase in (FasePorta.AVISO, FasePorta.ABERTA),
-                encerrado=porta.fase is FasePorta.FECHADA,
+                em_andamento=porta.fase in (FasePorta.AVISO, FasePorta.ABERTA) and not ja_passou_porta,
+                encerrado=porta.fase is FasePorta.FECHADA or ja_passou_porta,
                 em_risco=lambda p=porta: p.ciclista_em_rota_de_colisao(
                     area_ciclista, distancia_ciclista_m, velocidade_mps
                 ),
             )
         for ponto_cego in perigos.pontos_cegos:
+            ja_deixou_onibus_para_tras = (
+                ponto_cego.onibus is not None
+                and ponto_cego.fase in (FasePontoCego.AVISO, FasePontoCego.ATIVO)
+                and ponto_cego.onibus.distancia_m - distancia_ciclista_m < -14.0
+            )
             self._acompanhar(
                 tempo_s,
                 ponto_cego.id_evento,
                 TIPO_PONTO_CEGO,
                 ponto_cego.trecho,
                 ponto_cego.distancia_encontro_m,
-                em_andamento=ponto_cego.fase in (FasePontoCego.AVISO, FasePontoCego.ATIVO),
-                encerrado=ponto_cego.fase is FasePontoCego.ENCERRADO,
+                em_andamento=ponto_cego.fase in (FasePontoCego.AVISO, FasePontoCego.ATIVO)
+                and not ja_deixou_onibus_para_tras,
+                encerrado=ponto_cego.fase is FasePontoCego.ENCERRADO or ja_deixou_onibus_para_tras,
                 em_risco=lambda pc=ponto_cego: pc.ciclista_na_zona(area_ciclista, distancia_ciclista_m),
             )
 
@@ -156,6 +172,7 @@ class RegistroDesempenho:
     def registrar_colisao_trafego(self) -> None:
         """Batidas em veículos comuns não são perigos planejados; ficam contadas à parte."""
         self.colisoes_trafego += 1
+        self._colisoes_trafego_por_tentativa[self.tentativa] += 1
 
     def encerrar_tentativa(self, tempo_vitoria_s: float | None = None) -> Path | None:
         """Grava os resultados da tentativa atual e prepara a próxima. Retorna o CSV, se algo foi gravado.
@@ -192,8 +209,9 @@ class RegistroDesempenho:
 
     def resumo(self, apenas_tentativa_atual: bool = False) -> ResumoDesempenho:
         """Totais para o boletim: contagens, tempo médio de resposta e o tipo de erro mais comum."""
-        registros = self.registros_tentativa_atual if apenas_tentativa_atual else self.registros
-        return resumir(registros, self.colisoes_trafego)
+        if apenas_tentativa_atual:
+            return resumir(self.registros_tentativa_atual, self.colisoes_trafego_da_tentativa(self.tentativa))
+        return resumir(self.registros, self.colisoes_trafego)
 
     def _acompanhar(
         self,

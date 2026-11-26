@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from dataclasses import dataclass, field
 from enum import Enum, auto
 import random
@@ -28,6 +30,7 @@ from src.configuracao import (
     POSICAO_PONTO_CEGO_M,
     POSICAO_PORTA_M,
     SITUACOES_COMPARAVEIS,
+    VELOCIDADE_INICIAL_MPS,
     VELOCIDADE_ONIBUS_MPS,
 )
 from src.trafego import TipoVeiculo, Veiculo
@@ -52,6 +55,7 @@ class PerigoPorta:
     distancia_m: float = POSICAO_PORTA_M
     trecho: int = 0
     id_evento: str = "porta_1"
+    lado: str = "direita"
     _tempo_decorrido_s: float | None = field(default=None, init=False)
 
     @property
@@ -64,19 +68,34 @@ class PerigoPorta:
             return FasePorta.ABERTA
         return FasePorta.FECHADA
 
-    def atualizar(self, delta_s: float, distancia_ciclista_m: float, *, permitir_aviso: bool = True) -> None:
+    def atualizar(
+        self,
+        delta_s: float,
+        distancia_ciclista_m: float,
+        *,
+        permitir_aviso: bool = True,
+        velocidade_mps: float = VELOCIDADE_INICIAL_MPS,
+    ) -> None:
         if self._tempo_decorrido_s is not None:
             self._tempo_decorrido_s = min(self._tempo_decorrido_s + delta_s, DURACAO_AVISO_PORTA_S + DURACAO_PORTA_ABERTA_S)
-        elif permitir_aviso and 0 <= self.distancia_m - distancia_ciclista_m <= DISTANCIA_AVISO_PORTA_M:
-            self._tempo_decorrido_s = 0.0
+        else:
+            # Em velocidades altas, antecipa o aviso para a porta realmente abrir à frente do piloto.
+            distancia_aviso_m = max(DISTANCIA_AVISO_PORTA_M, min(20.0, velocidade_mps * 1.32))
+            if permitir_aviso and 0 <= self.distancia_m - distancia_ciclista_m <= distancia_aviso_m:
+                self._tempo_decorrido_s = 0.0
 
     def area_carro(self, distancia_ciclista_m: float) -> pygame.FRect:
-        esquerda_carro = CENTRO_PISTA_X + LARGURA_PISTA / 2
+        if self.lado == "esquerda":
+            esquerda_carro = CENTRO_PISTA_X - LARGURA_PISTA / 2 - LARGURA_CARRO_ESTACIONADO
+        else:
+            esquerda_carro = CENTRO_PISTA_X + LARGURA_PISTA / 2
         porta_y = CICLISTA_TELA_Y + (distancia_ciclista_m - self.distancia_m) * ESCALA_PISTA_PX_POR_M
         return pygame.FRect(esquerda_carro, porta_y - ALTURA_PORTA, LARGURA_CARRO_ESTACIONADO, COMPRIMENTO_CARRO_ESTACIONADO)
 
     def area_porta(self, distancia_ciclista_m: float) -> pygame.FRect:
         carro = self.area_carro(distancia_ciclista_m)
+        if self.lado == "esquerda":
+            return pygame.FRect(carro.right, carro.top + ALTURA_PORTA / 2, ALCANCE_PORTA, ALTURA_PORTA)
         return pygame.FRect(carro.left - ALCANCE_PORTA, carro.top + ALTURA_PORTA / 2, ALCANCE_PORTA, ALTURA_PORTA)
 
     def ciclista_em_rota_de_colisao(
@@ -144,6 +163,7 @@ class PerigoPontoCego:
         area_ciclista: pygame.FRect | None = None,
         *,
         permitir_aviso: bool = True,
+        velocidade_mps: float = VELOCIDADE_INICIAL_MPS,
     ) -> None:
         if self.onibus is None:
             if distancia_ciclista_m >= self.distancia_encontro_m - ANTECEDENCIA_ENTRADA_ONIBUS_M:
@@ -160,13 +180,15 @@ class PerigoPontoCego:
 
         self.onibus.atualizar(delta_s)
         diferenca_m = self.onibus.distancia_m - distancia_ciclista_m
+        velocidade_relativa = max(0.0, velocidade_mps - self.velocidade_onibus_mps)
+        distancia_aviso_m = max(DISTANCIA_AVISO_PONTO_CEGO_M, min(15.5, velocidade_relativa * 1.45))
 
         if self._tempo_decorrido_s is not None:
             self._tempo_decorrido_s = min(
                 self._tempo_decorrido_s + delta_s,
                 DURACAO_AVISO_PONTO_CEGO_S + DURACAO_PONTO_CEGO_ATIVO_S,
             )
-        elif permitir_aviso and -3.5 <= diferenca_m <= DISTANCIA_AVISO_PONTO_CEGO_M:
+        elif permitir_aviso and -3.5 <= diferenca_m <= distancia_aviso_m:
             self._tempo_decorrido_s = 0.0
 
         fase_atual = self.fase
@@ -240,11 +262,21 @@ def criar_perigos_percurso(aleatorio: bool = False) -> tuple[list[PerigoPorta], 
             ultimo_marco_m = marco_m
             if tipo == "porta":
                 contador_porta += 1
+                id_porta = f"porta_{contador_porta}"
+                ids_porta_comparaveis = set(SITUACOES_COMPARAVEIS["porta"])
+                if id_porta in ids_porta_comparaveis:
+                    # Mantém o par comparável início x fim no mesmo lado para comparação justa.
+                    lado_porta = "direita"
+                else:
+                    lado_porta = "esquerda" if contador_porta % 2 == 0 else "direita"
+                    if aleatorio and random.random() < 0.35:
+                        lado_porta = "direita" if lado_porta == "esquerda" else "esquerda"
                 portas.append(
                     PerigoPorta(
                         distancia_m=marco_m,
                         trecho=indice_trecho,
-                        id_evento=f"porta_{contador_porta}",
+                        id_evento=id_porta,
+                        lado=lado_porta,
                     )
                 )
             elif tipo == "ponto_cego":
@@ -287,12 +319,18 @@ class GerenciadorPerigos:
         area_ciclista: pygame.FRect,
         *,
         permitir_aviso: bool = True,
+        velocidade_mps: float = VELOCIDADE_INICIAL_MPS,
     ) -> None:
         for porta in self.portas:
             em_andamento = porta.fase in (FasePorta.AVISO, FasePorta.ABERTA)
-            proxima = -15.0 <= porta.distancia_m - distancia_ciclista_m <= 25.0
+            proxima = -15.0 <= porta.distancia_m - distancia_ciclista_m <= 28.0
             if em_andamento or (proxima and porta.fase is FasePorta.AGUARDANDO):
-                porta.atualizar(delta_s, distancia_ciclista_m, permitir_aviso=permitir_aviso)
+                porta.atualizar(
+                    delta_s,
+                    distancia_ciclista_m,
+                    permitir_aviso=permitir_aviso,
+                    velocidade_mps=velocidade_mps,
+                )
 
         for ponto_cego in self.pontos_cegos:
             em_andamento = ponto_cego.fase in (FasePontoCego.AVISO, FasePontoCego.ATIVO)
@@ -310,6 +348,7 @@ class GerenciadorPerigos:
                     distancia_ciclista_m,
                     area_ciclista,
                     permitir_aviso=permitir_aviso,
+                    velocidade_mps=velocidade_mps,
                 )
 
     def porta_em_destaque(self, distancia_ciclista_m: float | None = None) -> PerigoPorta | None:
@@ -344,9 +383,35 @@ class GerenciadorPerigos:
     def zonas_bloqueadas_faixa_direita(self, distancia_ciclista_m: float) -> list[tuple[float, float]]:
         zonas: list[tuple[float, float]] = []
         for p in self.portas:
-            if -15.0 <= p.distancia_m - distancia_ciclista_m <= 45.0:
+            if p.lado == "direita" and -15.0 <= p.distancia_m - distancia_ciclista_m <= 45.0:
                 zonas.append((p.distancia_m - 12.0, p.distancia_m + 12.0))
         return zonas
+
+    def zonas_bloqueadas_faixa_esquerda(self, distancia_ciclista_m: float) -> list[tuple[float, float]]:
+        zonas: list[tuple[float, float]] = []
+        for p in self.portas:
+            if p.lado == "esquerda" and -15.0 <= p.distancia_m - distancia_ciclista_m <= 45.0:
+                zonas.append((p.distancia_m - 12.0, p.distancia_m + 12.0))
+        return zonas
+
+    def em_risco_iminente(
+        self,
+        area_ciclista: pygame.FRect,
+        distancia_ciclista_m: float,
+        velocidade_mps: float,
+    ) -> bool:
+        """Retorna True se o piloto está em risco imediato de algum perigo ativo."""
+        for porta in self.portas:
+            if porta.fase in (FasePorta.AVISO, FasePorta.ABERTA) and porta.ciclista_em_rota_de_colisao(
+                area_ciclista, distancia_ciclista_m, velocidade_mps
+            ):
+                return True
+        for pc in self.pontos_cegos:
+            if pc.fase in (FasePontoCego.AVISO, FasePontoCego.ATIVO) and pc.ciclista_na_zona(
+                area_ciclista, distancia_ciclista_m
+            ):
+                return True
+        return False
 
     def zonas_exclusivas_ponto_cego(self, distancia_ciclista_m: float) -> list[tuple[float, float]]:
         zonas: list[tuple[float, float]] = []

@@ -58,9 +58,9 @@ VELOCIDADE_ONIBUS_MPS = 4.8
 MARGEM_SPAWN_TRAFEGO_FRENTE_M = 24.0
 MARGEM_REMOCAO_TRAFEGO_ATRAS_M = 14.0
 MARGEM_REMOCAO_TRAFEGO_FRENTE_M = 42.0
-DISTANCIA_SEGURA_MESMA_FAIXA_M = 6.5
-INTERVALO_TRAFEGO_PADRAO_M = 88.0
-MAX_VEICULOS_AMBIENTE_PADRAO = 4
+DISTANCIA_SEGURA_MESMA_FAIXA_M = 4.5
+INTERVALO_TRAFEGO_PADRAO_M = 28.0
+MAX_VEICULOS_AMBIENTE_PADRAO = 15
 
 POSICAO_PONTO_CEGO_M = 140.0
 ANTECEDENCIA_ENTRADA_ONIBUS_M = 14.0
@@ -72,8 +72,8 @@ LARGURA_PONTO_CEGO = 175.0
 DESLOCAMENTO_FECHAMENTO_ONIBUS_PX = 108.0
 
 # Métricas: o risco resolvido até este tempo após o aviso conta como antecipação; depois, como reação tardia.
-LIMITE_ANTECIPACAO_PORTA_S = DURACAO_AVISO_PORTA_S
-LIMITE_ANTECIPACAO_PONTO_CEGO_S = DURACAO_AVISO_PONTO_CEGO_S / 2
+LIMITE_ANTECIPACAO_PORTA_S = DURACAO_AVISO_PORTA_S * 0.55
+LIMITE_ANTECIPACAO_PONTO_CEGO_S = 1.1
 PASTA_RESULTADOS = "resultados"
 
 # Situações equivalentes comparadas no início (trecho 1) e no fim (trecho 3) do percurso.
@@ -89,8 +89,8 @@ CONFIG_TRECHOS = (
     {
         "nome": NOMES_TRECHOS[0],
         "rotulo_densidade": "Tráfego leve",
-        "intervalo_trafego_m": 58.0,
-        "max_veiculos_ambiente": 5,
+        "intervalo_trafego_m": 22.0,
+        "max_veiculos_ambiente": 13,
         "perigos": (
             ("porta", 95.0),
             ("ponto_cego", 260.0),
@@ -101,8 +101,8 @@ CONFIG_TRECHOS = (
     {
         "nome": NOMES_TRECHOS[1],
         "rotulo_densidade": "Tráfego moderado",
-        "intervalo_trafego_m": 44.0,
-        "max_veiculos_ambiente": 7,
+        "intervalo_trafego_m": 15.0,
+        "max_veiculos_ambiente": 18,
         "perigos": (
             ("porta", 830.0),
             ("ponto_cego", 945.0),
@@ -115,8 +115,8 @@ CONFIG_TRECHOS = (
     {
         "nome": NOMES_TRECHOS[2],
         "rotulo_densidade": "Tráfego intenso",
-        "intervalo_trafego_m": 34.0,
-        "max_veiculos_ambiente": 9,
+        "intervalo_trafego_m": 11.0,
+        "max_veiculos_ambiente": 24,
         "perigos": (
             ("porta", 1575.0),
             ("ponto_cego", 1660.0),

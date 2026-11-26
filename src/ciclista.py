@@ -27,7 +27,10 @@ class Ciclista:
     dash_direcao: int = 0
     dash_avanco: bool = False
     _dash_em_risco: bool = False
+    dash_parry_pendente: bool = False
     _bonus_dash_ganho: bool = False
+    parries_realizados: int = 0
+    parry_flash_s: float = 0.0
 
     @property
     def dash_pronto(self) -> bool:
@@ -48,7 +51,21 @@ class Ciclista:
         self.dash_restante_s = DASH_DURACAO_S
         self.dash_recarga_s = DASH_RECARGA_S
         self._dash_em_risco = em_risco
+        self.dash_parry_pendente = False
         return True
+
+    def resolver_parry_dash(self, ainda_em_risco: bool) -> bool:
+        """Concede o bônus de escapada ('parry') apenas se o dash realmente tirou o piloto do risco."""
+        if not self.dash_parry_pendente:
+            return False
+        self.dash_parry_pendente = False
+        if not ainda_em_risco:
+            self.dash_recarga_s = max(0.0, self.dash_recarga_s - DASH_BONUS_ESCAPADA_S)
+            self.parries_realizados += 1
+            self.parry_flash_s = 0.55
+            self._bonus_dash_ganho = True
+            return True
+        return False
 
     def consumir_bonus_dash(self) -> bool:
         if self._bonus_dash_ganho:
@@ -57,6 +74,9 @@ class Ciclista:
         return False
 
     def atualizar(self, delta_s: float, direcao_lateral: int, acelerar: bool, frear: bool) -> None:
+        if self.parry_flash_s > 0.0:
+            self.parry_flash_s = max(0.0, self.parry_flash_s - delta_s)
+
         aceleracao = 0.0
         if frear:
             aceleracao = -FRENAGEM_MPS2
@@ -87,8 +107,7 @@ class Ciclista:
                 deslocamento_x = self.dash_direcao * DASH_VELOCIDADE_LATERAL_PXPS * tempo_dash
             if self.dash_restante_s == 0.0 and self._dash_em_risco:
                 self._dash_em_risco = False
-                self.dash_recarga_s = max(0.0, self.dash_recarga_s - DASH_BONUS_ESCAPADA_S)
-                self._bonus_dash_ganho = True
+                self.dash_parry_pendente = True
         else:
             tempo_movimento_lateral_s = min(delta_s, avanco_m / VELOCIDADE_INICIAL_MPS)
             deslocamento_x = direcao_lateral * VELOCIDADE_LATERAL_PXPS * tempo_movimento_lateral_s

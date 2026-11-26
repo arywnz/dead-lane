@@ -1,5 +1,7 @@
 """Comparação do desempenho em situações equivalentes no início e no fim do percurso."""
 
+from __future__ import annotations
+
 import csv
 from collections.abc import Iterable
 from dataclasses import dataclass

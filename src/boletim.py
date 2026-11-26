@@ -2,6 +2,8 @@
 comparativo de evolução (início vs. fim) e diagnóstico pedagógico personalizado.
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass
 import pygame
 
@@ -97,16 +99,27 @@ def calcular_patente(resumo: ResumoDesempenho, *, derrota: bool = False) -> Pate
 def gerar_dica_personalizada(resumo: ResumoDesempenho, *, derrota: bool = False) -> str:
     """Gera uma dica pedagógica direcionada a partir do tipo de erro mais comum."""
     if resumo.erro_mais_comum == "porta":
+        if resumo.falhas == 0 and resumo.reacoes_tardias > 0:
+            return (
+                "Dica Defensiva (Portas de Carros): Você evitou bater, mas reagiu tarde em portas abrindo. "
+                "Mantenha margem dos carros estacionados nas laterais e, ao primeiro pisca-alerta, "
+                "mude para a faixa central ou freie."
+            )
         return (
             "Dica Defensiva (Portas de Carros): Seu maior desafio foi o 'dooring'. "
-            "Mantenha distância dos carros estacionados à direita e, ao notar o pisca-alerta, "
+            "Mantenha distância dos carros estacionados nas laterais e, ao notar o pisca-alerta, "
             "mude para a faixa central ou freie."
         )
     if resumo.erro_mais_comum == "ponto_cego":
+        if resumo.falhas == 0 and resumo.reacoes_tardias > 0:
+            return (
+                "Dica Defensiva (Ponto Cego de Ônibus): Você saiu sem colidir, mas entrou na zona dos 'Angles Morts'. "
+                "Ao ver a seta do ônibus, freie ou mude para a faixa livre antes de emparelhar."
+            )
         return (
             "Dica Defensiva (Ponto Cego de Ônibus): Atenção aos 'Angles Morts'. "
             "Nunca emparelhe na zona lateral quando o ônibus der seta: freie para recuar "
-            "ou ultrapasse pela esquerda."
+            "ou mude para a faixa livre."
         )
     if resumo.colisoes_trafego > 0:
         return (
@@ -156,6 +169,7 @@ def desenhar_boletim_pilotagem(
     mouse_pos: tuple[int, int] = (0, 0),
     em_pausa: bool = False,
     derrota: bool = False,
+    parries_dash: int = 0,
 ) -> dict[str, pygame.Rect]:
     """Renderiza o Boletim de Pilotagem com visual limpo e hierárquico, sem poluição."""
     tela.fill(FUNDO)
@@ -192,8 +206,12 @@ def desenhar_boletim_pilotagem(
 
     nome_jogador = jogador if jogador else "Piloto"
     tela.blit(fonte_titulo.render(titulo_texto, True, cor_titulo), (margem_x + 64, 24))
+    subtitulo_cab = f"{status_cab}  ·  {nome_jogador}  ·  {tempo_percurso_s:.1f} s"
+    if parries_dash > 0:
+        rotulo_parry = "escapada no limite" if parries_dash == 1 else "escapadas no limite"
+        subtitulo_cab += f"  ·  {parries_dash} {rotulo_parry}"
     tela.blit(
-        fonte_texto.render(f"{status_cab}  ·  {nome_jogador}  ·  {tempo_percurso_s:.1f} s", True, TEXTO_SECUNDARIO),
+        fonte_texto.render(subtitulo_cab, True, TEXTO_SECUNDARIO),
         (margem_x + 64, 62),
     )
 

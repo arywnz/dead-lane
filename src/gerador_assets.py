@@ -10,6 +10,8 @@ as dimensões físicas e as hitboxes de colisão do jogo:
 - Ícones de aviso: perigo de porta, ponto cego, alerta periférico e sinalizações
 """
 
+from __future__ import annotations
+
 import math
 from pathlib import Path
 import pygame
