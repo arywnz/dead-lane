@@ -678,11 +678,11 @@ def desenhar_tela_instrucoes(
     tela.blit(fonte_menor.render("CONTROLES", True, DESTAQUE), (margem_x, y_ctrl_sec))
 
     controles = (
-        ("W / ↑", "Acelerar", "Até 58 km/h"),
-        ("S / ↓", "Frear", "Recua do risco"),
-        ("A D / ← →", "Faixas", "Desvio lateral"),
+        ("W / Cima", "Acelerar", "Até 58 km/h"),
+        ("S / Baixo", "Frear", "Recua do risco"),
+        ("A D / Setas", "Faixas", "Desvio lateral"),
         ("ESPAÇO", "Dash", "Desvia ou avança"),
-        ("B / P", "Boletim", "Pausa e dados"),
+        ("B / P", "Resultados", "Pausa e dados"),
     )
     espaco_ctrl = 14
     larg_ctrl = (largura_total - espaco_ctrl * (len(controles) - 1)) // len(controles)

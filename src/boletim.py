@@ -70,12 +70,12 @@ def calcular_patente(resumo: ResumoDesempenho, *, derrota: bool = False) -> Pate
         cor = DESTAQUE
     elif total_colisoes == 0 and taxa_antecipacao >= 0.65:
         rank = "A"
-        titulo = "Ciclista Defensivo Consciente"
+        titulo = "Piloto Defensivo Consciente"
         descricao = "Ótima leitura preventiva e nenhuma colisão no trajeto."
         cor = VERDE_ESMERALDA
     elif total_colisoes <= 2 and taxa_antecipacao >= 0.40:
         rank = "B"
-        titulo = "Ciclista em Desenvolvimento"
+        titulo = "Piloto em Desenvolvimento"
         descricao = "Bom controle geral, mas com reações tardias em trechos movimentados."
         cor = AVISO
     else:
@@ -111,7 +111,7 @@ def gerar_dica_personalizada(resumo: ResumoDesempenho, *, derrota: bool = False)
     if resumo.colisoes_trafego > 0:
         return (
             "Dica de Fluxo e Espaçamento: Mantenha distância segura dos veículos à frente "
-            "e use o freio (S / ↓) ou o Dash (Espaço) para evitar colisões."
+            "e use o freio (S / Baixo) ou o Dash (Espaço) para evitar colisões."
         )
     if resumo.reacoes_tardias > 0:
         return (
@@ -125,7 +125,7 @@ def gerar_dica_personalizada(resumo: ResumoDesempenho, *, derrota: bool = False)
         )
     if resumo.total_perigos == 0:
         return (
-            "Continue pedalando pela avenida para registrar sua leitura "
+            "Continue pilotando pela avenida para registrar sua leitura "
             "de portas de carros e pontos cegos de ônibus."
         )
     return (
@@ -190,7 +190,7 @@ def desenhar_boletim_pilotagem(
         cor_titulo = DESTAQUE
         status_cab = "Chegada segura"
 
-    nome_jogador = jogador if jogador else "Ciclista"
+    nome_jogador = jogador if jogador else "Piloto"
     tela.blit(fonte_titulo.render(titulo_texto, True, cor_titulo), (margem_x + 64, 24))
     tela.blit(
         fonte_texto.render(f"{status_cab}  ·  {nome_jogador}  ·  {tempo_percurso_s:.1f} s", True, TEXTO_SECUNDARIO),

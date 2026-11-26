@@ -29,11 +29,11 @@ O objetivo do jogador é percorrer com segurança uma avenida movimentada de 2.2
 
 | Tecla / Atalho | Ação | Descrição |
 |---|---|---|
-| **W / ↑** | Acelerar | Pedala para frente, aumentando a velocidade até o limite máximo. |
-| **S / ↓** | Frear (Defensivo) | Reduz a velocidade; fundamental para sair do ponto cego e recuar. |
-| **A / ←** e **D / →** | Mudar de Posição | Desloca o ciclista lateralmente entre as faixas da pista. |
+| **W / Seta Cima** | Acelerar | Acelera para frente, aumentando a velocidade até o limite máximo (58 km/h). |
+| **S / Seta Baixo** | Frear (Defensivo) | Reduz a velocidade; fundamental para sair do ponto cego e recuar. |
+| **A / D ou Setas** | Mudar de Faixa | Desloca o piloto lateralmente entre as faixas da pista. |
 | **Espaço** | Dash | Desvio lateral rápido (com A/D) ou impulso para frente (sem direção lateral). |
-| **B / P / Esc** | Pausa / Boletim | Congela o jogo e abre o Boletim de Pilotagem com telemetria parcial. |
+| **B / P / Esc** | Pausa / Resultados | Congela o jogo e abre a Tela de Resultados com telemetria parcial. |
 | **H / I** | Instruções | Abre a tela de instruções e reconhecimento de perigos. |
 | **R** | Reiniciar | Reinicia a tentativa imediatamente a partir do marco zero. |
 | **Esc / Q** | Sair | Fecha o jogo (ou despausa se estiver no boletim de pausa). |
