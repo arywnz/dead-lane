@@ -630,6 +630,22 @@ def _quebrar_texto(fonte: pygame.font.Font, texto: str, largura_max: int) -> lis
     return linhas
 
 
+def _desenhar_keycap_seta(tela: pygame.Surface, rect: pygame.Rect, direcao: str) -> None:
+    """Desenha um keycap com seta vetorial nítida (independe de glifos Unicode da fonte)."""
+    pygame.draw.rect(tela, ASFALTO, rect, border_radius=3)
+    pygame.draw.rect(tela, BORDA_PISTA, rect, width=1, border_radius=3)
+    cx, cy = rect.centerx, rect.centery
+    if direcao == "cima":
+        pts = [(cx, cy - 5), (cx - 5, cy + 4), (cx + 5, cy + 4)]
+    elif direcao == "baixo":
+        pts = [(cx, cy + 5), (cx - 5, cy - 4), (cx + 5, cy - 4)]
+    elif direcao == "esquerda":
+        pts = [(cx - 5, cy), (cx + 4, cy - 5), (cx + 4, cy + 5)]
+    else:
+        pts = [(cx + 5, cy), (cx - 4, cy - 5), (cx - 4, cy + 5)]
+    pygame.draw.polygon(tela, DESTAQUE, pts)
+
+
 def desenhar_tela_instrucoes(
     tela: pygame.Surface,
     tempo_s: float,
@@ -678,17 +694,17 @@ def desenhar_tela_instrucoes(
     tela.blit(fonte_menor.render("CONTROLES", True, DESTAQUE), (margem_x, y_ctrl_sec))
 
     controles = (
-        ("W / Cima", "Acelerar", "Até 58 km/h"),
-        ("S / Baixo", "Frear", "Recua do risco"),
-        ("A D / Setas", "Faixas", "Desvio lateral"),
-        ("ESPAÇO", "Dash", "Desvia ou avança"),
-        ("B / P", "Resultados", "Pausa e dados"),
+        ("W", ("cima",), "Acelerar", "Até 58 km/h"),
+        ("S", ("baixo",), "Frear", "Recua do risco"),
+        ("A D", ("esquerda", "direita"), "Faixas", "Desvio lateral"),
+        ("ESPAÇO", (), "Dash", "Desvia ou avança"),
+        ("B / P", (), "Resultados", "Pausa e dados"),
     )
     espaco_ctrl = 14
     larg_ctrl = (largura_total - espaco_ctrl * (len(controles) - 1)) // len(controles)
     y_caixas_ctrl = y_ctrl_sec + 28
 
-    for idx_c, (teclas, acao, detalhe) in enumerate(controles):
+    for idx_c, (teclas, setas, acao, detalhe) in enumerate(controles):
         cx = margem_x + idx_c * (larg_ctrl + espaco_ctrl)
         box_c = pygame.Rect(cx, y_caixas_ctrl, larg_ctrl, 84)
         pygame.draw.rect(tela, PAINEL, box_c, border_radius=4)
@@ -697,7 +713,16 @@ def desenhar_tela_instrucoes(
         surf_k = fonte_tecla.render(teclas, True, DESTAQUE)
         badge_k = pygame.Rect(cx + 12, y_caixas_ctrl + 12, surf_k.get_width() + 14, 24)
         pygame.draw.rect(tela, ASFALTO, badge_k, border_radius=3)
+        pygame.draw.rect(tela, BORDA_PISTA, badge_k, width=1, border_radius=3)
         tela.blit(surf_k, (badge_k.x + 7, badge_k.y + 4))
+
+        if setas:
+            sep = fonte_tecla.render("/", True, TEXTO_SECUNDARIO)
+            tela.blit(sep, (badge_k.right + 6, y_caixas_ctrl + 16))
+            x_seta = badge_k.right + 18
+            for dir_s in setas:
+                _desenhar_keycap_seta(tela, pygame.Rect(x_seta, y_caixas_ctrl + 12, 24, 24), dir_s)
+                x_seta += 28
 
         tela.blit(fonte_menor.render(acao, True, TEXTO_PRINCIPAL), (cx + 12, y_caixas_ctrl + 42))
         tela.blit(fonte_texto.render(detalhe, True, TEXTO_SECUNDARIO), (cx + 12, y_caixas_ctrl + 60))
